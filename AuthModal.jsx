@@ -72,6 +72,7 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
         setMode('login');
       }
     } catch (error) {
+      console.error('Firebase auth error:', error);
       toast.error(firebaseError(error.code));
     } finally {
       setLoading(false);
@@ -245,5 +246,5 @@ function firebaseError(code) {
     'auth/network-request-failed': 'Sin conexion a internet',
   };
 
-  return map[code] || 'Ocurrio un error. Intenta de nuevo.';
+  return map[code] || `Ocurrio un error. Intenta de nuevo. ${code || ''}`.trim();
 }

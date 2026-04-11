@@ -78,16 +78,20 @@ export function AuthProvider({ children }) {
   async function register({ email, password, fullName, phone }) {
     if (!auth || !supabase) throw new Error('La app no esta configurada');
 
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    await updateProfile(cred.user, { displayName: fullName });
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedFullName = fullName.trim();
+    const normalizedPhone = phone.trim();
+
+    const cred = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+    await updateProfile(cred.user, { displayName: normalizedFullName });
 
     const { data, error } = await supabase
       .from('profiles')
       .upsert({
         firebase_uid: cred.user.uid,
-        email,
-        full_name: fullName,
-        phone,
+        email: normalizedEmail,
+        full_name: normalizedFullName,
+        phone: normalizedPhone,
         is_admin: cred.user.uid === env.VITE_ADMIN_UID,
       })
       .select()
@@ -101,7 +105,8 @@ export function AuthProvider({ children }) {
 
   async function login({ email, password }) {
     if (!auth) throw new Error('La app no esta configurada');
-    const cred = await signInWithEmailAndPassword(auth, email, password);
+    const normalizedEmail = email.trim().toLowerCase();
+    const cred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
     return cred.user;
   }
 
@@ -113,7 +118,8 @@ export function AuthProvider({ children }) {
 
   async function resetPassword(email) {
     if (!auth) throw new Error('La app no esta configurada');
-    await sendPasswordResetEmail(auth, email);
+    const normalizedEmail = email.trim().toLowerCase();
+    await sendPasswordResetEmail(auth, normalizedEmail);
   }
 
   async function updateProfileData(fields) {
