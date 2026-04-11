@@ -1,3 +1,4 @@
+import React from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Package, ShoppingBag, LogOut } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';

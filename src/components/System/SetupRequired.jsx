@@ -1,3 +1,5 @@
+import React from 'react';
+
 export default function SetupRequired({ missingEnvVars }) {
   return (
     <main style={{
