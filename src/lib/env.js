@@ -1,0 +1,41 @@
+const REQUIRED_ENV_VARS = [
+  'VITE_FIREBASE_API_KEY',
+  'VITE_FIREBASE_AUTH_DOMAIN',
+  'VITE_FIREBASE_PROJECT_ID',
+  'VITE_FIREBASE_STORAGE_BUCKET',
+  'VITE_FIREBASE_MESSAGING_SENDER_ID',
+  'VITE_FIREBASE_APP_ID',
+  'VITE_SUPABASE_URL',
+  'VITE_SUPABASE_ANON_KEY',
+  'VITE_ADMIN_UID',
+];
+
+export const env = {
+  VITE_FIREBASE_API_KEY: import.meta.env.VITE_FIREBASE_API_KEY || '',
+  VITE_FIREBASE_AUTH_DOMAIN: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
+  VITE_FIREBASE_PROJECT_ID: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
+  VITE_FIREBASE_STORAGE_BUCKET: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
+  VITE_FIREBASE_MESSAGING_SENDER_ID: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+  VITE_FIREBASE_APP_ID: import.meta.env.VITE_FIREBASE_APP_ID || '',
+  VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL || '',
+  VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+  VITE_ADMIN_UID: import.meta.env.VITE_ADMIN_UID || '',
+};
+
+export const missingEnvVars = REQUIRED_ENV_VARS.filter((key) => !env[key]);
+
+export const hasFirebaseEnv = [
+  env.VITE_FIREBASE_API_KEY,
+  env.VITE_FIREBASE_AUTH_DOMAIN,
+  env.VITE_FIREBASE_PROJECT_ID,
+  env.VITE_FIREBASE_STORAGE_BUCKET,
+  env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  env.VITE_FIREBASE_APP_ID,
+].every(Boolean);
+
+export const hasSupabaseEnv = [
+  env.VITE_SUPABASE_URL,
+  env.VITE_SUPABASE_ANON_KEY,
+].every(Boolean);
+
+export const hasRequiredEnv = missingEnvVars.length === 0;
