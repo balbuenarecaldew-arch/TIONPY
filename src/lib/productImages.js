@@ -2,13 +2,33 @@ function normalizeUrl(value) {
   return String(value || '').trim();
 }
 
-export function normalizeImageUrls(value) {
-  if (!Array.isArray(value)) return [];
+function toCandidateList(value) {
+  if (Array.isArray(value)) return value;
 
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text) return [];
+
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {}
+
+    return text
+      .split(/\r?\n|,(?=\s*(?:https?:\/\/|blob:|\/))/)
+      .map((item) => item.trim());
+  }
+
+  return [];
+}
+
+export function normalizeImageUrls(value) {
   const seen = new Set();
   const list = [];
 
-  for (const item of value) {
+  for (const item of toCandidateList(value)) {
     const next = normalizeUrl(item);
     if (!next || seen.has(next)) continue;
     seen.add(next);

@@ -1,11 +1,11 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, Minus, Plus, ShoppingCart, Trash2, Zap } from 'lucide-react';
+import { Minus, Plus, ShoppingCart, Trash2, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useCart } from '../../contexts/CartContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { storeConfig } from '../../config/store';
-import { getPrimaryProductImage } from '../../lib/productImages';
+import { getPrimaryProductImage, getProductImages } from '../../lib/productImages';
 
 const EMOJI_MAP = { 1: 'Cel', 2: 'Aud', 3: 'Game', 4: 'Acc', 5: 'Home', 6: 'PC' };
 
@@ -21,6 +21,7 @@ export default function ProductCard({ product }) {
   const inCart = items.find((item) => item.id === product.id);
   const lineTotal = inCart ? inCart.price * inCart.qty : product.price;
   const primaryImage = getPrimaryProductImage(product);
+  const productImages = getProductImages(product);
 
   function handleAdd(event) {
     event.preventDefault();
@@ -97,6 +98,12 @@ export default function ProductCard({ product }) {
               </span>
             )}
 
+            {productImages.length > 1 && (
+              <span className="promo-pill" style={{ bottom: 10, left: 10, background: 'rgba(17,24,39,.82)', color: '#fff' }}>
+                {productImages.length} fotos
+              </span>
+            )}
+
             {outOfStock && (
               <div
                 style={{
@@ -146,44 +153,17 @@ export default function ProductCard({ product }) {
             </div>
           </div>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: inCart ? '1fr' : '36px 1fr',
-              gap: 8,
-              marginBottom: 8,
-            }}
-          >
-            <Link
-              to={`/producto/${product.id}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 8,
-                border: '1.5px solid var(--border)',
-                color: 'var(--txt-muted)',
-                textDecoration: 'none',
-                minHeight: 40,
-              }}
-              title="Ver detalle"
+          {!inCart && (
+            <button
+              onClick={handleAdd}
+              disabled={outOfStock}
+              className="btn btn-blue btn-full"
+              style={{ marginBottom: 8, justifyContent: 'center' }}
             >
-              <Eye size={16} />
-              {inCart && <span style={{ marginLeft: 6, fontSize: 13, fontWeight: 600 }}>Ver detalle</span>}
-            </Link>
-
-            {!inCart && (
-              <button
-                onClick={handleAdd}
-                disabled={outOfStock}
-                className="btn btn-blue"
-                style={{ width: '100%', justifyContent: 'center' }}
-              >
-                <ShoppingCart size={14} />
-                {outOfStock ? 'Sin stock' : 'Agregar'}
-              </button>
-            )}
-          </div>
+              <ShoppingCart size={14} />
+              {outOfStock ? 'Sin stock' : 'Agregar al carrito'}
+            </button>
+          )}
 
           {inCart && (
             <div className="product-card-cart-box">
@@ -230,6 +210,12 @@ export default function ProductCard({ product }) {
                   <Trash2 size={15} />
                 </button>
               </div>
+            </div>
+          )}
+
+          {productImages.length > 1 && (
+            <div style={{ fontSize: 12, color: 'var(--txt-muted)', marginBottom: 8 }}>
+              Toca la tarjeta para ver las {productImages.length} fotos.
             </div>
           )}
 

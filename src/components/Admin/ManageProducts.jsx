@@ -26,7 +26,6 @@ const EMPTY = {
   category_id: '',
   stock: '',
   is_active: true,
-  image_url: '',
   image_urls_text: '',
 };
 
@@ -67,13 +66,8 @@ function isFirebaseHostedUrl(url) {
   return /firebasestorage|googleapis\.com|^gs:\/\//.test(String(url || ''));
 }
 
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error(`No se pudo leer ${file.name}`));
-    reader.readAsDataURL(file);
-  });
+function isBlobPreviewUrl(url) {
+  return /^blob:/.test(String(url || ''));
 }
 
 export default function ManageProducts() {
@@ -99,6 +93,44 @@ export default function ManageProducts() {
   useEffect(() => {
     load();
   }, []);
+
+  function enrichProduct(product) {
+    if (!product) return product;
+
+    const category = categories.find((item) => String(item.id) === String(product.category_id || ''));
+
+    return {
+      ...product,
+      categories: category
+        ? {
+            name: category.name,
+            slug: category.slug,
+            emoji: category.emoji,
+          }
+        : product.categories || null,
+    };
+  }
+
+  function upsertLocalProduct(product) {
+    const enriched = enrichProduct(product);
+
+    setProducts((prev) => {
+      const next = [enriched, ...prev.filter((item) => item.id !== enriched.id)];
+      return next.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    });
+
+    return enriched;
+  }
+
+  function patchLocalProduct(productId, patch) {
+    setProducts((prev) =>
+      prev.map((item) =>
+        item.id === productId
+          ? enrichProduct({ ...item, ...patch })
+          : item
+      )
+    );
+  }
 
   async function load() {
     const [{ data: productData }, { data: categoryData }] = await Promise.all([
@@ -136,6 +168,16 @@ export default function ManageProducts() {
   const activeCount = products.filter((product) => product.is_active).length;
   const discountedCount = products.filter((product) => product.old_price && product.old_price > product.price).length;
 
+  function closeModal() {
+    setModal(null);
+    setForm(EMPTY);
+    setImgFiles([]);
+    setImgPreviews([]);
+    setImgError('');
+    setUploadPct(0);
+    if (fileRef.current) fileRef.current.value = '';
+  }
+
   function openAdd() {
     setForm(EMPTY);
     setImgFiles([]);
@@ -165,23 +207,11 @@ export default function ManageProducts() {
   }
 
   function setField(key, value) {
-    if (key === 'image_url') {
-      const nextUrls = mergeUniqueImageUrls([value.trim()], parseImageUrlText(form.image_urls_text));
-      setForm((prev) => ({
-        ...prev,
-        image_url: value,
-        image_urls_text: nextUrls.join('\n'),
-      }));
-      setImgPreviews((prev) => mergeUniqueImageUrls(nextUrls, prev.filter((item) => item.startsWith('blob:'))));
-      setImgError('');
-      return;
-    }
-
     setForm((prev) => ({ ...prev, [key]: value }));
 
     if (key === 'image_urls_text') {
       setImgPreviews((prev) =>
-        mergeUniqueImageUrls(parseImageUrlText(value), prev.filter((item) => item.startsWith('blob:')))
+        mergeUniqueImageUrls(parseImageUrlText(value), prev.filter((item) => isBlobPreviewUrl(item)))
       );
       setImgError('');
     }
@@ -206,7 +236,7 @@ export default function ManageProducts() {
     const currentUrls = parseImageUrlText(form.image_urls_text);
     const currentGallery = mergeUniqueImageUrls(
       currentUrls,
-      imgPreviews.filter((item) => item.startsWith('blob:'))
+      imgPreviews.filter((item) => isBlobPreviewUrl(item))
     );
     const availableSlots = MAX_PRODUCT_IMAGES - currentGallery.length;
 
@@ -224,7 +254,7 @@ export default function ManageProducts() {
 
     const nextPreviews = acceptedFiles.map((file) => URL.createObjectURL(file));
     setImgFiles((prev) => [...prev, ...acceptedFiles]);
-    setImgPreviews((prev) => mergeUniqueImageUrls(currentUrls, prev.filter((item) => item.startsWith('blob:')), nextPreviews));
+    setImgPreviews((prev) => mergeUniqueImageUrls(currentUrls, prev.filter((item) => isBlobPreviewUrl(item)), nextPreviews));
     setImgError('');
     setUploadPct(0);
     if (fileRef.current) fileRef.current.value = '';
@@ -254,14 +284,14 @@ export default function ManageProducts() {
     return filteredProducts.filter((product) => product.is_active);
   }
 
-  async function uploadSingleImage(productId, file, fileIndex, totalFiles) {
+  async function uploadSingleImage(productId, file, fileIndex, totalFiles, productName) {
     if (!storage) {
       throw new Error('Firebase Storage no esta configurado');
     }
 
     return new Promise((resolve, reject) => {
       const fileExt = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : 'jpg';
-      const safeName = form.name
+      const safeName = String(productName || '')
         .trim()
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
@@ -308,46 +338,6 @@ export default function ManageProducts() {
     });
   }
 
-  async function resolveImageGallery(productId) {
-    const manualUrls = parseImageUrlText(form.image_urls_text);
-
-    if (!imgFiles.length) {
-      return {
-        urls: manualUrls,
-        warning: '',
-      };
-    }
-
-    const uploadedUrls = [];
-    const fallbackFiles = [];
-
-    for (let index = 0; index < imgFiles.length; index += 1) {
-      const file = imgFiles[index];
-
-      try {
-        const url = await uploadSingleImage(productId, file, index, imgFiles.length);
-        uploadedUrls.push(url);
-      } catch (error) {
-        console.error('Product image upload error:', error);
-        try {
-          const inlineUrl = await readFileAsDataUrl(file);
-          uploadedUrls.push(inlineUrl);
-          fallbackFiles.push(file.name);
-        } catch (readError) {
-          console.error('Product image fallback error:', readError);
-          throw error;
-        }
-      }
-    }
-
-    const urls = mergeUniqueImageUrls(manualUrls, uploadedUrls).slice(0, MAX_PRODUCT_IMAGES);
-    const warning = fallbackFiles.length
-      ? `Algunas fotos se guardaron en modo interno porque Firebase Storage no respondio (${fallbackFiles.length}).`
-      : '';
-
-    return { urls, warning };
-  }
-
   async function persistProductImages(productId, urls) {
     const nextPrimary = urls[0] || '';
 
@@ -383,6 +373,54 @@ export default function ManageProducts() {
     throw error;
   }
 
+  async function syncImagesInBackground(productId, manualUrls, files, productName) {
+    if (!files.length) return;
+
+    if (!storage) {
+      patchLocalProduct(productId, {
+        __syncingImages: false,
+        __syncWarning: true,
+      });
+      toast.error('El producto ya quedo guardado, pero Firebase Storage no esta configurado para subir las fotos.');
+      return;
+    }
+
+    try {
+      const uploadedUrls = [];
+
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        const url = await uploadSingleImage(productId, file, index, files.length, productName);
+        uploadedUrls.push(url);
+      }
+
+      const finalUrls = mergeUniqueImageUrls(manualUrls, uploadedUrls).slice(0, MAX_PRODUCT_IMAGES);
+      const result = await persistProductImages(productId, finalUrls);
+
+      patchLocalProduct(productId, {
+        image_url: finalUrls[0] || '',
+        image_urls: finalUrls,
+        __syncingImages: false,
+        __syncWarning: Boolean(result.warning),
+      });
+
+      if (result.warning) {
+        toast.error(result.warning);
+      } else {
+        toast.success('Fotos sincronizadas en segundo plano');
+      }
+    } catch (error) {
+      console.error('Background image sync error:', error);
+      patchLocalProduct(productId, {
+        __syncingImages: false,
+        __syncWarning: true,
+      });
+      toast.error(`El producto ya quedo guardado, pero las fotos no terminaron de subir. ${getUploadErrorMessage(error)}`);
+    } finally {
+      setUploadPct(0);
+    }
+  }
+
   async function handleSave() {
     if (!form.name || !form.price || !form.stock) {
       toast.error('Nombre, precio y stock son obligatorios');
@@ -393,7 +431,13 @@ export default function ManageProducts() {
 
     try {
       const manualUrls = parseImageUrlText(form.image_urls_text);
-      const baseImages = mergeUniqueImageUrls(manualUrls).slice(0, MAX_PRODUCT_IMAGES);
+      const pendingFiles = [...imgFiles];
+      const pendingBlobImages = imgPreviews.filter((item) => isBlobPreviewUrl(item));
+      const persistedImages = mergeUniqueImageUrls(manualUrls).slice(0, MAX_PRODUCT_IMAGES);
+      const localPreviewImages = mergeUniqueImageUrls(
+        manualUrls,
+        pendingBlobImages
+      ).slice(0, MAX_PRODUCT_IMAGES);
       const payload = {
         name: form.name.trim(),
         brand: form.brand.trim(),
@@ -403,8 +447,8 @@ export default function ManageProducts() {
         category_id: form.category_id || null,
         stock: Number.parseInt(form.stock, 10),
         is_active: form.is_active,
-        image_url: baseImages[0] || '',
-        image_urls: baseImages,
+        image_url: persistedImages[0] || '',
+        image_urls: persistedImages,
       };
 
       let imageWarning = '';
@@ -416,43 +460,29 @@ export default function ManageProducts() {
           const fallbackPayload = { ...payload };
           delete fallbackPayload.image_urls;
           createResult = await supabase.from('products').insert(fallbackPayload).select().single();
-          imageWarning = baseImages.length > 1
+          imageWarning = persistedImages.length > 1
             ? 'La foto principal se guardo, pero para varias fotos debes ejecutar de nuevo schema.sql en Supabase.'
             : imageWarning;
         }
         if (createResult.error) throw createResult.error;
         const created = createResult.data;
+        upsertLocalProduct({
+          ...created,
+          image_url: localPreviewImages[0] || persistedImages[0] || '',
+          image_urls: localPreviewImages.length ? localPreviewImages : persistedImages,
+          __syncingImages: pendingFiles.length > 0,
+          __syncWarning: false,
+        });
 
-        if (imgFiles.length) {
-          try {
-            const { urls, warning } = await resolveImageGallery(created.id);
-            if (urls.length) {
-              const persistResult = await persistProductImages(created.id, urls);
-              imageWarning = [warning, persistResult.warning].filter(Boolean).join(' ');
-            }
-          } catch (error) {
-            console.error('Product image upload error:', error);
-            imageWarning = getUploadErrorMessage(error) || 'El producto se creo sin imagen.';
-            setImgError(imageWarning);
-          }
+        closeModal();
+
+        toast.success(pendingFiles.length ? 'Producto guardado. Las fotos se estan sincronizando en segundo plano.' : 'Producto creado');
+
+        if (pendingFiles.length) {
+          void syncImagesInBackground(created.id, manualUrls, pendingFiles, payload.name);
         }
-
-        toast.success('Producto creado');
       } else {
         const nextUpdate = { ...payload };
-
-        if (imgFiles.length) {
-          try {
-            const { urls, warning } = await resolveImageGallery(form.id);
-            nextUpdate.image_url = urls[0] || '';
-            nextUpdate.image_urls = urls;
-            imageWarning = warning;
-          } catch (error) {
-            console.error('Product image upload error:', error);
-            imageWarning = getUploadErrorMessage(error) || 'Los cambios se guardaron sin cambiar la imagen.';
-            setImgError(imageWarning);
-          }
-        }
 
         const { error } = await supabase.from('products').update(nextUpdate).eq('id', form.id);
         if (error) {
@@ -469,11 +499,25 @@ export default function ManageProducts() {
           }
         }
 
-        toast.success('Producto actualizado');
-      }
+        upsertLocalProduct({
+          ...form,
+          ...nextUpdate,
+          id: form.id,
+          created_at: form.created_at,
+          image_url: localPreviewImages[0] || persistedImages[0] || '',
+          image_urls: localPreviewImages.length ? localPreviewImages : persistedImages,
+          __syncingImages: pendingFiles.length > 0,
+          __syncWarning: false,
+        });
 
-      await load();
-      setModal(null);
+        closeModal();
+
+        toast.success(pendingFiles.length ? 'Cambios guardados. Las fotos se estan sincronizando en segundo plano.' : 'Producto actualizado');
+
+        if (pendingFiles.length) {
+          void syncImagesInBackground(form.id, manualUrls, pendingFiles, payload.name);
+        }
+      }
 
       if (imageWarning) {
         toast.error(imageWarning);
@@ -803,20 +847,30 @@ export default function ManageProducts() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
                   <div>
                     <div style={{ fontWeight: 700, marginBottom: 2 }}>{product.name}</div>
-                  <div style={{ fontSize: 13, color: 'var(--txt-muted)' }}>{product.brand || 'Sin marca'}</div>
+                    <div style={{ fontSize: 13, color: 'var(--txt-muted)' }}>{product.brand || 'Sin marca'}</div>
+                  </div>
+                  <span className={`badge ${product.is_active ? 'badge-success' : 'badge-gray'}`}>
+                    {product.is_active ? 'Visible' : 'Archivado'}
+                  </span>
                 </div>
-                <span className={`badge ${product.is_active ? 'badge-success' : 'badge-gray'}`}>
-                  {product.is_active ? 'Visible' : 'Archivado'}
-                </span>
-              </div>
 
-              <div style={{ fontSize: 13, color: 'var(--txt-muted)', marginTop: 8 }}>
-                {product.categories ? getCategoryLabel(product.categories) : 'Sin categoria'}
+                <div style={{ fontSize: 13, color: 'var(--txt-muted)', marginTop: 8 }}>
+                  {product.categories ? getCategoryLabel(product.categories) : 'Sin categoria'}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--txt-muted)', marginTop: 4 }}>
+                  {productImages.length} foto{productImages.length !== 1 ? 's' : ''}
+                </div>
+                {product.__syncingImages && (
+                  <div style={{ fontSize: 12, color: 'var(--blue)', fontWeight: 700, marginTop: 4 }}>
+                    Fotos sincronizando en segundo plano...
+                  </div>
+                )}
+                {product.__syncWarning && (
+                  <div style={{ fontSize: 12, color: 'var(--warning)', fontWeight: 700, marginTop: 4 }}>
+                    Revisa Storage o vuelve a editar para completar la galeria
+                  </div>
+                )}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--txt-muted)', marginTop: 4 }}>
-                {productImages.length} foto{productImages.length !== 1 ? 's' : ''}
-              </div>
-            </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                 <div>
@@ -863,11 +917,11 @@ export default function ManageProducts() {
       )}
 
       {modal && (
-        <div className="overlay" onClick={(event) => event.target === event.currentTarget && setModal(null)}>
+        <div className="overlay" onClick={(event) => event.target === event.currentTarget && closeModal()}>
           <div className="modal" style={{ maxWidth: 620 }}>
             <div className="modal-header">
               <h2>{modal === 'add' ? 'Agregar producto' : 'Editar producto'}</h2>
-              <button className="close-btn" onClick={() => setModal(null)}>
+              <button className="close-btn" onClick={closeModal}>
                 <X size={18} />
               </button>
             </div>
@@ -950,7 +1004,7 @@ export default function ManageProducts() {
                     placeholder={'https://...\nhttps://...\nUna URL por linea'}
                   />
                   <small>
-                    Puedes mezclar archivos y URLs publicas. Si Firebase Storage falla, intentaremos guardar las fotos igual.
+                    Puedes mezclar archivos y URLs publicas. El producto se guarda rapido y las fotos se sincronizan en segundo plano.
                   </small>
                 </div>
 
@@ -1025,7 +1079,7 @@ export default function ManageProducts() {
             </div>
 
             <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button onClick={() => setModal(null)} className="btn btn-outline">
+              <button onClick={closeModal} className="btn btn-outline">
                 Cancelar
               </button>
               <button onClick={handleSave} className="btn btn-primary" disabled={saving}>

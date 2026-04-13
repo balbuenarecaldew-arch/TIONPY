@@ -87,7 +87,7 @@ export default function ProductDetail() {
   function handleAdd() {
     if (outOfStock) return;
     addItem(product, qty);
-    toast.success(`Agregado x${qty} al carrito`);
+    toast.success(inCart ? `Carrito actualizado (+${qty})` : `Agregado x${qty} al carrito`);
   }
 
   function handleBuyNow() {
@@ -158,17 +158,22 @@ export default function ProductDetail() {
           </div>
 
           {productImages.length > 1 && (
-            <div className="product-gallery-strip">
-              {productImages.map((imageUrl, index) => (
-                <button
-                  key={`${imageUrl}-${index}`}
-                  type="button"
-                  className={`product-gallery-thumb ${index === activeImageIndex ? 'active' : ''}`}
-                  onClick={() => setActiveImageIndex(index)}
-                >
-                  <img src={imageUrl} alt={`${product.name} ${index + 1}`} />
-                </button>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: 12, color: 'var(--txt-muted)' }}>
+                Foto {activeImageIndex + 1} de {productImages.length}
+              </div>
+              <div className="product-gallery-strip">
+                {productImages.map((imageUrl, index) => (
+                  <button
+                    key={`${imageUrl}-${index}`}
+                    type="button"
+                    className={`product-gallery-thumb ${index === activeImageIndex ? 'active' : ''}`}
+                    onClick={() => setActiveImageIndex(index)}
+                  >
+                    <img src={imageUrl} alt={`${product.name} ${index + 1}`} />
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -236,7 +241,7 @@ export default function ProductDetail() {
             <div>
               <div style={{ fontSize: 13, fontWeight: 700 }}>Cantidad a comprar</div>
               <div style={{ fontSize: 12, color: 'var(--txt-muted)' }}>
-                Ajusta con menos o mas antes de agregar o comprar.
+                Ajusta la cantidad y luego agrega o compra directo.
               </div>
             </div>
             <div className="quantity-stepper">
@@ -265,18 +270,20 @@ export default function ProductDetail() {
           <div className="detail-action-grid">
             <button onClick={handleAdd} disabled={outOfStock} className="btn btn-blue btn-lg btn-full">
               <ShoppingCart size={18} />
-              {outOfStock ? 'Sin stock' : inCart ? `Agregar x${qty} (${inCart.qty} en carrito)` : `Agregar x${qty}`}
+              {outOfStock ? 'Sin stock' : 'Agregar al carrito'}
             </button>
 
             <button onClick={handleBuyNow} disabled={outOfStock} className="btn btn-primary btn-lg btn-full">
               <Zap size={18} />
-              Comprar x{qty}
+              Comprar ahora
             </button>
           </div>
 
-          <Link to="/carrito" className="btn btn-outline btn-lg btn-full">
-            Ver carrito
-          </Link>
+          {inCart && (
+            <div style={{ fontSize: 13, color: 'var(--txt-muted)', marginTop: -4 }}>
+              Ya tienes {inCart.qty} unidad{inCart.qty !== 1 ? 'es' : ''} en tu carrito. Si agregas mas, se acumulan.
+            </div>
+          )}
 
           <div className="card" style={{ padding: 0 }}>
             {[
