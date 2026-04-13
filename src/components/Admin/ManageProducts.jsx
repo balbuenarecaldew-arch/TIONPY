@@ -1,268 +1,488 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Pencil, Trash2, X, Save, Loader2, Upload, ImagePlus } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import { storage } from '../../lib/firebase';
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import React, { useEffect, useRef, useState } from 'react';
+import { ImagePlus, Loader2, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
+import { storage } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { getCategoryLabel } from '../../config/store';
 
-const EMPTY = { name:'', brand:'', description:'', price:'', old_price:'', category_id:'', stock:'', is_active:true, image_url:'' };
+const EMPTY = {
+  name: '',
+  brand: '',
+  description: '',
+  price: '',
+  old_price: '',
+  category_id: '',
+  stock: '',
+  is_active: true,
+  image_url: '',
+};
+
+const PRODUCT_FILTERS = [
+  { value: 'active', label: 'Activos' },
+  { value: 'inactive', label: 'Archivados' },
+  { value: 'all', label: 'Todos' },
+];
 
 export default function ManageProducts() {
-  const [products,   setProducts]   = useState([]);
+  const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [modal,      setModal]      = useState(null);   // null | 'add' | 'edit'
-  const [form,       setForm]       = useState(EMPTY);
-  const [saving,     setSaving]     = useState(false);
-  const [imgFile,    setImgFile]    = useState(null);
-  const [imgPrev,    setImgPrev]    = useState('');
-  const [uploadPct,  setUploadPct]  = useState(0);
-  const fileRef = useRef();
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(null);
+  const [filter, setFilter] = useState('active');
+  const [form, setForm] = useState(EMPTY);
+  const [saving, setSaving] = useState(false);
+  const [imgFile, setImgFile] = useState(null);
+  const [imgPrev, setImgPrev] = useState('');
+  const [uploadPct, setUploadPct] = useState(0);
+  const fileRef = useRef(null);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   async function load() {
-    const [{ data: prods }, { data: cats }] = await Promise.all([
+    const [{ data: productData }, { data: categoryData }] = await Promise.all([
       supabase.from('products').select('*, categories(name, slug)').order('created_at', { ascending: false }),
       supabase.from('categories').select('*').order('name'),
     ]);
-    setProducts(prods || []);
-    setCategories(cats || []);
+
+    setProducts(productData || []);
+    setCategories(categoryData || []);
     setLoading(false);
   }
 
-  function openAdd()        { setForm(EMPTY); setImgFile(null); setImgPrev(''); setModal('add'); }
-  function openEdit(prod)   { setForm({ ...prod, price: prod.price, old_price: prod.old_price || '', category_id: prod.category_id || '' }); setImgFile(null); setImgPrev(prod.image_url || ''); setModal('edit'); }
-  function setF(k, v)       { setForm(f => ({ ...f, [k]: v })); }
+  function openAdd() {
+    setForm(EMPTY);
+    setImgFile(null);
+    setImgPrev('');
+    setModal('add');
+  }
 
-  function handleImgChange(e) {
-    const file = e.target.files[0];
+  function openEdit(product) {
+    setForm({
+      ...product,
+      price: product.price,
+      old_price: product.old_price || '',
+      category_id: product.category_id || '',
+    });
+    setImgFile(null);
+    setImgPrev(product.image_url || '');
+    setModal('edit');
+  }
+
+  function setField(key, value) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function handleImgChange(event) {
+    const file = event.target.files[0];
     if (!file) return;
-    if (file.size > 3 * 1024 * 1024) { toast.error('La imagen no puede superar 3 MB'); return; }
+    if (file.size > 3 * 1024 * 1024) {
+      toast.error('La imagen no puede superar 3 MB');
+      return;
+    }
+
     setImgFile(file);
     setImgPrev(URL.createObjectURL(file));
   }
 
   async function uploadImage(productId) {
+    if (!storage) {
+      throw new Error('Firebase Storage no esta configurado');
+    }
+
     if (!imgFile) return form.image_url || '';
+
     return new Promise((resolve, reject) => {
       const storageRef = ref(storage, `products/${productId}_${Date.now()}`);
       const task = uploadBytesResumable(storageRef, imgFile);
-      task.on('state_changed',
-        snap => setUploadPct(Math.round(snap.bytesTransferred / snap.totalBytes * 100)),
-        reject,
-        async () => { resolve(await getDownloadURL(task.snapshot.ref)); }
+      let settled = false;
+
+      const finish = (handler, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        handler(value);
+      };
+
+      const timeoutId = window.setTimeout(() => {
+        try {
+          task.cancel();
+        } catch {}
+        finish(reject, new Error('La subida de la imagen tardo demasiado. Revisa Firebase Storage.'));
+      }, 20000);
+
+      task.on(
+        'state_changed',
+        (snapshot) => setUploadPct(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)),
+        (error) => finish(reject, error),
+        async () => {
+          try {
+            const url = await getDownloadURL(task.snapshot.ref);
+            finish(resolve, url);
+          } catch (error) {
+            finish(reject, error);
+          }
+        }
       );
     });
   }
 
   async function handleSave() {
-    if (!form.name || !form.price || !form.stock) { toast.error('Nombre, precio y stock son obligatorios'); return; }
+    if (!form.name || !form.price || !form.stock) {
+      toast.error('Nombre, precio y stock son obligatorios');
+      return;
+    }
+
     setSaving(true);
+
     try {
       const payload = {
-        name:        form.name.trim(),
-        brand:       form.brand.trim(),
+        name: form.name.trim(),
+        brand: form.brand.trim(),
         description: form.description.trim(),
-        price:       parseInt(form.price),
-        old_price:   form.old_price ? parseInt(form.old_price) : null,
+        price: Number.parseInt(form.price, 10),
+        old_price: form.old_price ? Number.parseInt(form.old_price, 10) : null,
         category_id: form.category_id || null,
-        stock:       parseInt(form.stock),
-        is_active:   form.is_active,
+        stock: Number.parseInt(form.stock, 10),
+        is_active: form.is_active,
       };
+
+      let imageWarning = '';
 
       if (modal === 'add') {
         const { data: created, error } = await supabase.from('products').insert(payload).select().single();
         if (error) throw error;
-        const imageUrl = await uploadImage(created.id);
-        if (imageUrl !== (form.image_url || '')) {
-          await supabase.from('products').update({ image_url: imageUrl }).eq('id', created.id);
-          created.image_url = imageUrl;
+
+        if (imgFile) {
+          try {
+            const imageUrl = await uploadImage(created.id);
+            if (imageUrl) {
+              const { error: imageError } = await supabase
+                .from('products')
+                .update({ image_url: imageUrl })
+                .eq('id', created.id);
+              if (imageError) throw imageError;
+            }
+          } catch (error) {
+            console.error('Product image upload error:', error);
+            imageWarning = error?.message || 'El producto se creo sin imagen.';
+          }
         }
-        toast.success('Producto creado');
+
+        toast.success(imageWarning ? 'Producto creado sin imagen' : 'Producto creado');
       } else {
-        // Delete old image from Firebase if replacing
-        if (imgFile && form.image_url) {
-          try { await deleteObject(ref(storage, form.image_url)); } catch {}
+        const nextUpdate = { ...payload };
+
+        if (imgFile) {
+          try {
+            const imageUrl = await uploadImage(form.id);
+            nextUpdate.image_url = imageUrl;
+
+            if (form.image_url) {
+              try {
+                await deleteObject(ref(storage, form.image_url));
+              } catch {}
+            }
+          } catch (error) {
+            console.error('Product image upload error:', error);
+            imageWarning = error?.message || 'Los cambios se guardaron sin cambiar la imagen.';
+          }
         }
-        const imageUrl = await uploadImage(form.id);
-        await supabase.from('products').update({ ...payload, image_url: imageUrl }).eq('id', form.id);
-        toast.success('Producto actualizado');
+
+        const { error } = await supabase.from('products').update(nextUpdate).eq('id', form.id);
+        if (error) throw error;
+
+        toast.success(imageWarning ? 'Producto actualizado sin cambiar imagen' : 'Producto actualizado');
       }
+
       await load();
       setModal(null);
-    } catch (err) {
-      console.error(err);
-      toast.error('Error al guardar el producto');
+
+      if (imageWarning) {
+        toast.error(imageWarning);
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(error?.message || 'No se pudo guardar el producto');
     } finally {
       setSaving(false);
       setUploadPct(0);
     }
   }
 
-  async function handleDelete(prod) {
-    if (!window.confirm(`¿Eliminar "${prod.name}"? Esta acción no se puede deshacer.`)) return;
-    if (prod.image_url) {
-      try { await deleteObject(ref(storage, prod.image_url)); } catch {}
+  async function handleDelete(product) {
+    const confirmed = window.confirm(`Eliminar "${product.name}"? Esta accion no se puede deshacer.`);
+    if (!confirmed) return;
+
+    if (product.image_url) {
+      try {
+        await deleteObject(ref(storage, product.image_url));
+      } catch {}
     }
-    await supabase.from('products').delete().eq('id', prod.id);
+
+    const { error } = await supabase.from('products').delete().eq('id', product.id);
+    if (error) {
+      toast.error('No se pudo eliminar el producto');
+      return;
+    }
+
     toast.success('Producto eliminado');
-    setProducts(prev => prev.filter(p => p.id !== prod.id));
+    setProducts((prev) => prev.filter((item) => item.id !== product.id));
   }
 
-  async function toggleActive(prod) {
-    await supabase.from('products').update({ is_active: !prod.is_active }).eq('id', prod.id);
-    setProducts(prev => prev.map(p => p.id === prod.id ? { ...p, is_active: !p.is_active } : p));
+  async function toggleActive(product) {
+    const { error } = await supabase
+      .from('products')
+      .update({ is_active: !product.is_active })
+      .eq('id', product.id);
+
+    if (error) {
+      toast.error('No se pudo actualizar el producto');
+      return;
+    }
+
+    setProducts((prev) =>
+      prev.map((item) =>
+        item.id === product.id
+          ? { ...item, is_active: !item.is_active }
+          : item
+      )
+    );
+
+    toast.success(product.is_active ? 'Producto archivado' : 'Producto reactivado');
   }
+
+  const filteredProducts = products.filter((product) => {
+    if (filter === 'active') return product.is_active;
+    if (filter === 'inactive') return !product.is_active;
+    return true;
+  });
 
   if (loading) return <div className="page-loading"><div className="spinner" /></div>;
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: 22 }}>Productos ({products.length})</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: '1rem' }}>
+        <div>
+          <h1 style={{ fontSize: 24, marginBottom: 4 }}>Productos</h1>
+          <p style={{ fontSize: 14, color: 'var(--txt-muted)' }}>
+            {filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''} en vista.
+          </p>
+        </div>
         <button onClick={openAdd} className="btn btn-primary">
-          <Plus size={16} /> Agregar producto
+          <Plus size={16} />
+          Agregar producto
         </button>
       </div>
 
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead>
-            <tr style={{ background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
-              {['Producto','Categoría','Precio','Stock','Estado','Acciones'].map(h => (
-                <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, fontSize: 12, color: 'var(--txt-muted)', whiteSpace: 'nowrap' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {products.map((p, i) => (
-              <tr key={p.id} style={{ borderBottom: i < products.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                <td style={{ padding: '10px 16px' }}>
-                  <div style={{ fontWeight: 600 }}>{p.name}</div>
-                  <div style={{ color: 'var(--txt-muted)', fontSize: 12 }}>{p.brand}</div>
-                </td>
-                <td style={{ padding: '10px 16px', color: 'var(--txt-muted)' }}>{p.categories?.name || '—'}</td>
-                <td style={{ padding: '10px 16px', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, color: 'var(--brand)' }}>
-                  ₲ {p.price.toLocaleString('es-PY')}
-                </td>
-                <td style={{ padding: '10px 16px' }}>
-                  <span style={{
-                    fontWeight: 700,
-                    color: p.stock === 0 ? 'var(--danger)' : p.stock < 5 ? 'var(--warning)' : 'var(--success)',
-                  }}>{p.stock}</span>
-                </td>
-                <td style={{ padding: '10px 16px' }}>
-                  <button
-                    onClick={() => toggleActive(p)}
-                    style={{
-                      background: p.is_active ? 'var(--success-bg)' : 'var(--danger-bg)',
-                      color: p.is_active ? '#047857' : '#991B1B',
-                      border: 'none', borderRadius: 99,
-                      padding: '3px 10px', fontSize: 11, fontWeight: 700,
-                      cursor: 'pointer', fontFamily: "'Sora', sans-serif",
-                    }}
-                  >{p.is_active ? 'Activo' : 'Inactivo'}</button>
-                </td>
-                <td style={{ padding: '10px 16px' }}>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => openEdit(p)} className="btn btn-outline btn-sm" title="Editar"><Pencil size={13} /></button>
-                    <button onClick={() => handleDelete(p)} className="btn btn-sm" style={{ background: 'var(--danger-bg)', color: 'var(--danger)', border: 'none' }} title="Eliminar"><Trash2 size={13} /></button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: '1rem' }}>
+        {PRODUCT_FILTERS.map((item) => (
+          <button
+            key={item.value}
+            type="button"
+            onClick={() => setFilter(item.value)}
+            className={filter === item.value ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'}
+          >
+            {item.label}
+          </button>
+        ))}
       </div>
 
-      {/* Modal add/edit */}
+      <div className="product-grid-admin">
+        {filteredProducts.map((product) => (
+          <div key={product.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div
+              style={{
+                height: 160,
+                borderRadius: 'var(--radius)',
+                background: '#F3F4F6',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
+                fontSize: 12,
+                color: 'var(--txt-muted)',
+              }}
+            >
+              {product.image_url ? (
+                <img src={product.image_url} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                'Sin imagen'
+              )}
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>{product.name}</div>
+                  <div style={{ fontSize: 13, color: 'var(--txt-muted)' }}>{product.brand || 'Sin marca'}</div>
+                </div>
+                <span className={`badge ${product.is_active ? 'badge-success' : 'badge-gray'}`}>
+                  {product.is_active ? 'Visible' : 'Archivado'}
+                </span>
+              </div>
+
+              <div style={{ fontSize: 13, color: 'var(--txt-muted)', marginTop: 8 }}>
+                {product.categories ? getCategoryLabel(product.categories) : 'Sin categoria'}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--txt-muted)' }}>Precio</div>
+                <div style={{ fontWeight: 700, color: 'var(--brand)', fontFamily: "'Space Grotesk', sans-serif" }}>
+                  Gs. {product.price.toLocaleString('es-PY')}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--txt-muted)' }}>Stock</div>
+                <div style={{ fontWeight: 700 }}>{product.stock}</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button onClick={() => openEdit(product)} className="btn btn-outline btn-sm">
+                <Pencil size={14} />
+                Editar
+              </button>
+              <button onClick={() => toggleActive(product)} className="btn btn-outline btn-sm">
+                {product.is_active ? 'Archivar' : 'Reactivar'}
+              </button>
+              <button onClick={() => handleDelete(product)} className="btn btn-danger btn-sm">
+                <Trash2 size={14} />
+                Eliminar
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {filteredProducts.length === 0 && (
+        <div className="card">
+          <p style={{ color: 'var(--txt-muted)' }}>No hay productos para este filtro.</p>
+        </div>
+      )}
+
       {modal && (
-        <div className="overlay" onClick={e => e.target === e.currentTarget && setModal(null)}>
-          <div className="modal" style={{ maxWidth: 560 }}>
+        <div className="overlay" onClick={(event) => event.target === event.currentTarget && setModal(null)}>
+          <div className="modal" style={{ maxWidth: 620 }}>
             <div className="modal-header">
               <h2>{modal === 'add' ? 'Agregar producto' : 'Editar producto'}</h2>
-              <button className="close-btn" onClick={() => setModal(null)}><X size={18} /></button>
+              <button className="close-btn" onClick={() => setModal(null)}>
+                <X size={18} />
+              </button>
             </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-              {/* Imagen */}
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div className="field">
                 <label>Imagen del producto</label>
                 <div
-                  onClick={() => fileRef.current.click()}
+                  onClick={() => fileRef.current?.click()}
                   style={{
-                    height: 120, border: '2px dashed var(--border)', borderRadius: 'var(--radius)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                    background: 'var(--bg)', overflow: 'hidden', transition: 'border-color .15s',
+                    height: 140,
+                    border: '2px dashed var(--border)',
+                    borderRadius: 'var(--radius)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    background: 'var(--bg)',
+                    overflow: 'hidden',
                   }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--blue)'}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
                 >
-                  {imgPrev
-                    ? <img src={imgPrev} alt="" style={{ maxHeight: 118, maxWidth: '100%', objectFit: 'contain' }} />
-                    : <div style={{ textAlign: 'center', color: 'var(--txt-muted)' }}>
-                        <ImagePlus size={28} style={{ marginBottom: 8 }} />
-                        <div style={{ fontSize: 13 }}>Click para subir imagen (máx. 3 MB)</div>
-                      </div>
-                  }
+                  {imgPrev ? (
+                    <img src={imgPrev} alt="" style={{ maxHeight: 138, maxWidth: '100%', objectFit: 'contain' }} />
+                  ) : (
+                    <div style={{ textAlign: 'center', color: 'var(--txt-muted)' }}>
+                      <ImagePlus size={28} style={{ marginBottom: 8 }} />
+                      <div style={{ fontSize: 13 }}>Click para subir imagen (max. 3 MB)</div>
+                    </div>
+                  )}
                 </div>
                 <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImgChange} />
+
                 {uploadPct > 0 && uploadPct < 100 && (
                   <div style={{ marginTop: 4 }}>
-                    <div style={{ height: 4, background: 'var(--border)', borderRadius: 99 }}>
-                      <div style={{ height: 4, background: 'var(--blue)', borderRadius: 99, width: `${uploadPct}%`, transition: 'width .2s' }} />
+                    <div style={{ height: 4, background: 'var(--border)', borderRadius: 999 }}>
+                      <div style={{ height: 4, background: 'var(--blue)', borderRadius: 999, width: `${uploadPct}%` }} />
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--txt-muted)', marginTop: 2 }}>Subiendo... {uploadPct}%</div>
+                    <div style={{ fontSize: 11, color: 'var(--txt-muted)', marginTop: 2 }}>
+                      Subiendo... {uploadPct}%
+                    </div>
                   </div>
                 )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div className="field" style={{ gridColumn: '1/-1' }}>
+              <div className="responsive-form-grid">
+                <div className="field full-span">
                   <label>Nombre *</label>
-                  <input className="input" value={form.name} onChange={e => setF('name', e.target.value)} placeholder="Ej: Auriculares Bluetooth" />
+                  <input className="input" value={form.name} onChange={(event) => setField('name', event.target.value)} />
                 </div>
+
                 <div className="field">
                   <label>Marca</label>
-                  <input className="input" value={form.brand} onChange={e => setF('brand', e.target.value)} placeholder="Ej: Sony" />
+                  <input className="input" value={form.brand} onChange={(event) => setField('brand', event.target.value)} />
                 </div>
+
                 <div className="field">
-                  <label>Categoría</label>
-                  <select className="input" value={form.category_id} onChange={e => setF('category_id', e.target.value)}>
-                    <option value="">— Sin categoría —</option>
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
+                  <label>Categoria</label>
+                  <select className="input" value={form.category_id} onChange={(event) => setField('category_id', event.target.value)}>
+                    <option value="">Sin categoria</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.emoji} {category.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
+
                 <div className="field">
-                  <label>Precio (₲) *</label>
-                  <input className="input" type="number" value={form.price} onChange={e => setF('price', e.target.value)} placeholder="185000" />
+                  <label>Precio *</label>
+                  <input className="input" type="number" value={form.price} onChange={(event) => setField('price', event.target.value)} />
                 </div>
+
                 <div className="field">
-                  <label>Precio tachado (₲)</label>
-                  <input className="input" type="number" value={form.old_price} onChange={e => setF('old_price', e.target.value)} placeholder="Dejar vacío si no hay oferta" />
+                  <label>Precio tachado</label>
+                  <input className="input" type="number" value={form.old_price} onChange={(event) => setField('old_price', event.target.value)} />
                 </div>
+
                 <div className="field">
                   <label>Stock *</label>
-                  <input className="input" type="number" value={form.stock} onChange={e => setF('stock', e.target.value)} placeholder="0" />
+                  <input className="input" type="number" value={form.stock} onChange={(event) => setField('stock', event.target.value)} />
                 </div>
-                <div className="field" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <input type="checkbox" id="is_active" checked={form.is_active} onChange={e => setF('is_active', e.target.checked)} style={{ width: 16, height: 16 }} />
-                  <label htmlFor="is_active" style={{ cursor: 'pointer', marginBottom: 0 }}>Visible en la tienda</label>
+
+                <div className="field" style={{ justifyContent: 'flex-end' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={form.is_active} onChange={(event) => setField('is_active', event.target.checked)} />
+                    Visible en la tienda
+                  </label>
                 </div>
-                <div className="field" style={{ gridColumn: '1/-1' }}>
-                  <label>Descripción</label>
-                  <textarea className="input" rows={3} value={form.description} onChange={e => setF('description', e.target.value)} placeholder="Descripción del producto..." />
+
+                <div className="field full-span">
+                  <label>Descripcion</label>
+                  <textarea className="input" rows={4} value={form.description} onChange={(event) => setField('description', event.target.value)} />
                 </div>
               </div>
             </div>
+
             <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button onClick={() => setModal(null)} className="btn btn-outline">Cancelar</button>
+              <button onClick={() => setModal(null)} className="btn btn-outline">
+                Cancelar
+              </button>
               <button onClick={handleSave} className="btn btn-primary" disabled={saving}>
-                {saving
-                  ? <><Loader2 size={16} style={{ animation: 'spin .7s linear infinite' }} /> Guardando...</>
-                  : <><Save size={16} /> {modal === 'add' ? 'Crear producto' : 'Guardar cambios'}</>}
+                {saving ? (
+                  <>
+                    <Loader2 size={16} style={{ animation: 'spin .7s linear infinite' }} />
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    <Save size={16} />
+                    {modal === 'add' ? 'Crear producto' : 'Guardar cambios'}
+                  </>
+                )}
               </button>
             </div>
           </div>

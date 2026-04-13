@@ -26,11 +26,13 @@ export function AuthProvider({ children }) {
 
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
+
       if (firebaseUser) {
         await syncProfile(firebaseUser);
       } else {
         setProfile(null);
       }
+
       setLoading(false);
     });
 
@@ -50,9 +52,9 @@ export function AuthProvider({ children }) {
     }
 
     if (!data) {
-      const { data: created } = await supabase
+      const { data: created, error: upsertError } = await supabase
         .from('profiles')
-        .insert({
+        .upsert({
           firebase_uid: firebaseUser.uid,
           email: firebaseUser.email,
           full_name: firebaseUser.displayName || '',
@@ -60,29 +62,42 @@ export function AuthProvider({ children }) {
         })
         .select()
         .single();
+
+      if (upsertError) {
+        console.error('syncProfile upsert error:', upsertError);
+        return;
+      }
+
       setProfile(created);
-    } else {
-      setProfile(data);
+      return;
     }
+
+    setProfile(data);
   }
 
   async function register({ email, password, fullName, phone }) {
     if (!auth || !supabase) throw new Error('La app no esta configurada');
 
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    await updateProfile(cred.user, { displayName: fullName });
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedFullName = fullName.trim();
+    const normalizedPhone = phone.trim();
 
-    const { data } = await supabase
+    const cred = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+    await updateProfile(cred.user, { displayName: normalizedFullName });
+
+    const { data, error } = await supabase
       .from('profiles')
-      .insert({
+      .upsert({
         firebase_uid: cred.user.uid,
-        email,
-        full_name: fullName,
-        phone,
+        email: normalizedEmail,
+        full_name: normalizedFullName,
+        phone: normalizedPhone,
         is_admin: cred.user.uid === env.VITE_ADMIN_UID,
       })
       .select()
       .single();
+
+    if (error) throw error;
 
     setProfile(data);
     return cred.user;
@@ -90,7 +105,8 @@ export function AuthProvider({ children }) {
 
   async function login({ email, password }) {
     if (!auth) throw new Error('La app no esta configurada');
-    const cred = await signInWithEmailAndPassword(auth, email, password);
+    const normalizedEmail = email.trim().toLowerCase();
+    const cred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
     return cred.user;
   }
 
@@ -102,18 +118,21 @@ export function AuthProvider({ children }) {
 
   async function resetPassword(email) {
     if (!auth) throw new Error('La app no esta configurada');
-    await sendPasswordResetEmail(auth, email);
+    const normalizedEmail = email.trim().toLowerCase();
+    await sendPasswordResetEmail(auth, normalizedEmail);
   }
 
   async function updateProfileData(fields) {
     if (!supabase || !user) throw new Error('La app no esta configurada');
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .update(fields)
       .eq('firebase_uid', user.uid)
       .select()
       .single();
+
+    if (error) throw error;
 
     setProfile(data);
 

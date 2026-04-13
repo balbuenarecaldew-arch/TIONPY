@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useReducer } from 'react';
+import React, { createContext, useContext, useEffect, useReducer, useState } from 'react';
 
 const CartContext = createContext(null);
 
@@ -37,6 +37,7 @@ function cartReducer(state, action) {
 
 export function CartProvider({ children }) {
   const [items, dispatch] = useReducer(cartReducer, []);
+  const [directCheckoutItems, setDirectCheckoutItems] = useState(null);
 
   // Cargar desde localStorage al iniciar
   useEffect(() => {
@@ -53,14 +54,39 @@ export function CartProvider({ children }) {
 
   const total    = items.reduce((sum, i) => sum + i.price * i.qty, 0);
   const count    = items.reduce((sum, i) => sum + i.qty, 0);
+  const checkoutItems = directCheckoutItems || items;
+  const checkoutCount = checkoutItems.reduce((sum, i) => sum + i.qty, 0);
+  const checkoutTotal = checkoutItems.reduce((sum, i) => sum + i.price * i.qty, 0);
+  const hasDirectCheckout = Boolean(directCheckoutItems?.length);
 
   function addItem(product)        { dispatch({ type: 'ADD',     product }); }
   function removeItem(id)          { dispatch({ type: 'REMOVE',  id }); }
   function setQty(id, qty)         { dispatch({ type: 'SET_QTY', id, qty }); }
-  function clearCart()             { dispatch({ type: 'CLEAR' }); }
+  function clearCart()             { dispatch({ type: 'CLEAR' }); setDirectCheckoutItems(null); }
+  function startDirectCheckout(product, qty = 1) {
+    const safeQty = Math.max(1, Math.min(qty, product.stock || qty));
+    setDirectCheckoutItems([{ ...product, qty: safeQty }]);
+  }
+  function clearDirectCheckout() {
+    setDirectCheckoutItems(null);
+  }
 
   return (
-    <CartContext.Provider value={{ items, total, count, addItem, removeItem, setQty, clearCart }}>
+    <CartContext.Provider value={{
+      items,
+      total,
+      count,
+      checkoutItems,
+      checkoutTotal,
+      checkoutCount,
+      hasDirectCheckout,
+      addItem,
+      removeItem,
+      setQty,
+      clearCart,
+      startDirectCheckout,
+      clearDirectCheckout,
+    }}>
       {children}
     </CartContext.Provider>
   );

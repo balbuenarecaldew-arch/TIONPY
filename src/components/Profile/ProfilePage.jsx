@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { User, Save, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
@@ -7,6 +7,13 @@ export default function ProfilePage() {
   const { user, profile, updateProfileData } = useAuth();
   const [form, setForm]       = useState({ full_name: profile?.full_name || '', phone: profile?.phone || '' });
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setForm({
+      full_name: profile?.full_name || '',
+      phone: profile?.phone || '',
+    });
+  }, [profile]);
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })); }
 
@@ -49,11 +56,11 @@ export default function ProfilePage() {
           </div>
           <div className="field">
             <label>Teléfono / WhatsApp</label>
-            <input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="0981 000 000" />
+            <input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="0981 000 000" autoComplete="tel" inputMode="tel" />
           </div>
           <div className="field">
             <label>Email</label>
-            <input className="input" value={user.email} disabled style={{ background: 'var(--bg)', cursor: 'not-allowed' }} />
+            <input className="input" value={user.email} disabled autoComplete="email" style={{ background: 'var(--bg)', cursor: 'not-allowed' }} />
             <small>El email no se puede cambiar desde aquí</small>
           </div>
           <button type="submit" className="btn btn-primary" disabled={loading}>

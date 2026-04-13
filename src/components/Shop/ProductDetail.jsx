@@ -1,23 +1,28 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, ShoppingCart, Package, Truck, ShieldCheck } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import { useCart } from '../../contexts/CartContext';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, Package, ShieldCheck, ShoppingCart, Truck, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
+import { useCart } from '../../contexts/CartContext';
 import { getCategoryLabel, storeConfig } from '../../config/store';
+import { getMemberPrice } from '../../lib/commerce';
 
 const EMOJI_MAP = {
-  1: '📱',
-  2: '🎧',
-  3: '🎮',
-  4: '🔌',
-  5: '🏠',
-  6: '💻',
+  1: 'Cel',
+  2: 'Aud',
+  3: 'Game',
+  4: 'Acc',
+  5: 'Home',
+  6: 'PC',
 };
 
 export default function ProductDetail() {
   const { id } = useParams();
-  const { addItem, items } = useCart();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { addItem, items, startDirectCheckout } = useCart();
+
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -39,11 +44,11 @@ export default function ProductDetail() {
 
   if (!product) {
     return (
-      <div className="container" style={{ paddingTop: '2rem' }}>
+      <div className="container page-pad">
         <div className="empty-state">
-          <div className="icon">?</div>
+          <div className="icon">Item</div>
           <h3>Producto no encontrado</h3>
-          <Link to="/" className="btn btn-primary" style={{ marginTop: '.5rem' }}>
+          <Link to="/" className="btn btn-primary" style={{ marginTop: '0.75rem' }}>
             Volver a la tienda
           </Link>
         </div>
@@ -56,6 +61,7 @@ export default function ProductDetail() {
     : null;
   const outOfStock = product.stock <= 0;
   const inCart = items.find((item) => item.id === product.id);
+  const memberPrice = getMemberPrice(product.price, storeConfig);
 
   function handleAdd() {
     if (outOfStock) return;
@@ -63,8 +69,20 @@ export default function ProductDetail() {
     toast.success('Agregado al carrito');
   }
 
+  function handleBuyNow() {
+    if (outOfStock) return;
+
+    startDirectCheckout(product);
+
+    if (!user) {
+      toast.success('Continua al pago y activa tu descuento registrandote');
+    }
+
+    navigate('/checkout');
+  }
+
   return (
-    <div className="container" style={{ paddingTop: '1.5rem', paddingBottom: '3rem' }}>
+    <div className="container page-pad">
       <Link
         to="/"
         style={{
@@ -74,19 +92,14 @@ export default function ProductDetail() {
           color: 'var(--txt-muted)',
           fontSize: 14,
           textDecoration: 'none',
-          marginBottom: '1.5rem',
+          marginBottom: '1rem',
         }}
       >
-        <ArrowLeft size={16} /> Volver a la tienda
+        <ArrowLeft size={16} />
+        Volver a la tienda
       </Link>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: 32,
-        }}
-      >
+      <div className="product-detail-grid">
         <div
           style={{
             background: '#F3F4F6',
@@ -94,9 +107,10 @@ export default function ProductDetail() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            minHeight: 300,
-            fontSize: 80,
+            minHeight: 320,
+            fontSize: 72,
             position: 'relative',
+            overflow: 'hidden',
           }}
         >
           {product.image_url ? (
@@ -104,130 +118,93 @@ export default function ProductDetail() {
               src={product.image_url}
               alt={product.name}
               style={{
-                maxWidth: '100%',
-                maxHeight: 300,
+                width: '100%',
+                height: '100%',
                 objectFit: 'contain',
                 borderRadius: 'var(--radius-lg)',
               }}
             />
           ) : (
-            EMOJI_MAP[product.category_id] || '📦'
+            EMOJI_MAP[product.category_id] || 'Item'
           )}
 
           {discount && (
-            <span
-              style={{
-                position: 'absolute',
-                top: 16,
-                right: 16,
-                background: 'var(--danger)',
-                color: '#fff',
-                fontSize: 13,
-                fontWeight: 700,
-                borderRadius: 99,
-                padding: '4px 12px',
-              }}
-            >
-              -{discount}%
+            <span className="promo-pill" style={{ top: 16, right: 16, background: 'var(--danger)', color: '#fff' }}>
+              -{discount}% OFF
             </span>
           )}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: 'var(--blue)',
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-                marginBottom: 6,
-              }}
-            >
-              {product.brand} · {getCategoryLabel(product.categories)}
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
+              {product.brand} - {getCategoryLabel(product.categories)}
             </div>
-            <h1 style={{ fontSize: 24, marginBottom: 8 }}>{product.name}</h1>
+            <h1 style={{ fontSize: 28, marginBottom: 8 }}>{product.name}</h1>
             {product.description && (
-              <p style={{ fontSize: 14, color: 'var(--txt-muted)', lineHeight: 1.7 }}>
+              <p style={{ fontSize: 14, color: 'var(--txt-muted)', lineHeight: 1.75 }}>
                 {product.description}
               </p>
             )}
           </div>
 
-          <div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-              <span
-                style={{
-                  fontFamily: "'Space Grotesk', sans-serif",
-                  fontSize: 28,
-                  fontWeight: 700,
-                  color: 'var(--brand)',
-                }}
-              >
+          <div className="card" style={{ background: 'var(--bg)', padding: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 30, fontWeight: 700, color: 'var(--brand)', fontFamily: "'Space Grotesk', sans-serif" }}>
                 Gs. {product.price.toLocaleString('es-PY')}
               </span>
               {product.old_price && (
-                <span
-                  style={{
-                    fontSize: 16,
-                    color: 'var(--txt-muted)',
-                    textDecoration: 'line-through',
-                  }}
-                >
+                <span style={{ fontSize: 16, color: 'var(--txt-muted)', textDecoration: 'line-through' }}>
                   Gs. {product.old_price.toLocaleString('es-PY')}
                 </span>
               )}
             </div>
-            {discount && (
-              <div style={{ fontSize: 13, color: 'var(--success)', fontWeight: 600, marginTop: 4 }}>
-                Ahorras Gs. {(product.old_price - product.price).toLocaleString('es-PY')} ({discount}% off)
-              </div>
-            )}
+            <div style={{ marginTop: 8, fontSize: 14, color: 'var(--success)', fontWeight: 700 }}>
+              Con cuenta pagas Gs. {memberPrice.toLocaleString('es-PY')}
+            </div>
+            <div style={{ marginTop: 4, fontSize: 13, color: 'var(--txt-muted)' }}>
+              Registrate y el descuento se aplica al pagar.
+            </div>
           </div>
 
           <div
             style={{
-              fontSize: 13,
+              fontSize: 14,
               color: outOfStock ? 'var(--danger)' : 'var(--success)',
-              fontWeight: 600,
+              fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
+              gap: 8,
             }}
           >
-            <Package size={14} />
-            {outOfStock ? 'Sin stock' : `Stock disponible: ${product.stock} unidades`}
+            <Package size={16} />
+            {outOfStock ? 'Sin stock' : `Stock disponible: ${product.stock}`}
           </div>
 
-          <button
-            onClick={handleAdd}
-            disabled={outOfStock}
-            className="btn btn-blue btn-lg btn-full"
-          >
-            <ShoppingCart size={18} />
-            {outOfStock ? 'Sin stock' : inCart ? `Agregar otro (${inCart.qty} en carrito)` : 'Agregar al carrito'}
-          </button>
+          <div className="detail-action-grid">
+            <button onClick={handleAdd} disabled={outOfStock} className="btn btn-blue btn-lg btn-full">
+              <ShoppingCart size={18} />
+              {outOfStock ? 'Sin stock' : inCart ? `Agregar otro (${inCart.qty} en carrito)` : 'Agregar al carrito'}
+            </button>
+
+            <button onClick={handleBuyNow} disabled={outOfStock} className="btn btn-primary btn-lg btn-full">
+              <Zap size={18} />
+              Comprar ahora
+            </button>
+          </div>
 
           <Link to="/carrito" className="btn btn-outline btn-lg btn-full">
             Ver carrito
           </Link>
 
-          <div
-            style={{
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              overflow: 'hidden',
-              marginTop: 4,
-            }}
-          >
+          <div className="card" style={{ padding: 0 }}>
             {[
               { icon: <Truck size={16} />, title: 'Entrega local', desc: storeConfig.city },
-              { icon: <ShieldCheck size={16} />, title: 'Compra segura', desc: 'Confirmacion manual y seguimiento del pedido' },
-              { icon: '💳', title: 'Formas de pago', desc: `${storeConfig.payments.primary} o ${storeConfig.payments.secondary}` },
+              { icon: <ShieldCheck size={16} />, title: 'Beneficio por cuenta', desc: `${storeConfig.discounts.memberPercent}% OFF para clientes registrados` },
+              { icon: 'Pago', title: 'Formas de pago', desc: `${storeConfig.payments.primary} o ${storeConfig.payments.secondary}` },
             ].map((item, index) => (
               <div
-                key={index}
+                key={item.title}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -238,7 +215,7 @@ export default function ProductDetail() {
               >
                 <span style={{ color: 'var(--blue)', flexShrink: 0 }}>{item.icon}</span>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{item.title}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{item.title}</div>
                   <div style={{ fontSize: 12, color: 'var(--txt-muted)' }}>{item.desc}</div>
                 </div>
               </div>

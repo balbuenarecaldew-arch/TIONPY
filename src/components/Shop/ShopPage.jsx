@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Search } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Search, Sparkles } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import ProductCard from './ProductCard';
-import { storeConfig, getCategoryLabel } from '../../config/store';
+import { getCategoryLabel, storeConfig } from '../../config/store';
 
 export default function ShopPage() {
   const [products, setProducts] = useState([]);
@@ -40,9 +40,10 @@ export default function ShopPage() {
     }
 
     if (search) {
+      const term = search.toLowerCase();
       list = list.filter((product) =>
-        product.name.toLowerCase().includes(search.toLowerCase()) ||
-        product.brand.toLowerCase().includes(search.toLowerCase())
+        product.name.toLowerCase().includes(term) ||
+        product.brand.toLowerCase().includes(term)
       );
     }
 
@@ -54,89 +55,64 @@ export default function ShopPage() {
   }, [products, activeCat, search, sortBy]);
 
   const offers = products.filter((product) => product.old_price);
-  const freeShippingFrom = storeConfig.shipping.freeFrom.toLocaleString('es-PY');
-  const paymentSummary = `${storeConfig.payments.primary} o ${storeConfig.payments.secondary.toLowerCase()}`;
 
   return (
-    <div className="container" style={{ paddingTop: '1.5rem', paddingBottom: '3rem' }}>
-      {offers.length > 0 && (
-        <div style={{
-          background: 'linear-gradient(135deg, var(--brand) 0%, var(--blue) 100%)',
-          borderRadius: 'var(--radius-lg)',
-          padding: '1.25rem 1.75rem',
-          marginBottom: '1.5rem',
-          color: '#fff',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 16,
-          flexWrap: 'wrap',
-        }}>
-          <div>
-            <h2 style={{ fontSize: 22, marginBottom: 4 }}>{storeConfig.slogan}</h2>
-            <p style={{ fontSize: 13, opacity: 0.86 }}>
-              Envio gratis desde Gs. {freeShippingFrom} · {paymentSummary}
-            </p>
+    <div className="container page-pad">
+      <div className="hero-banner">
+        <div>
+          <div className="highlight-chip" style={{ marginBottom: 10, display: 'inline-flex' }}>
+            <Sparkles size={14} />
+            Clientes registrados ahorran {storeConfig.discounts.memberPercent}%
           </div>
-          <div style={{
-            background: 'var(--accent)',
-            color: 'var(--brand)',
-            borderRadius: 10,
-            padding: '8px 18px',
-            fontFamily: "'Space Grotesk', sans-serif",
-            fontWeight: 700,
-            fontSize: 22,
-            flexShrink: 0,
-          }}>
-            {storeConfig.name}
+          <h2 style={{ fontSize: 28, marginBottom: 6 }}>{storeConfig.slogan}</h2>
+          <p style={{ fontSize: 14, opacity: 0.92, maxWidth: 620 }}>
+            Compra directo desde tu celular, registrate para activar descuento en el pago y recibe tu codigo de entrega automatico.
+          </p>
+        </div>
+        <div className="hero-metrics">
+          <div className="hero-metric-card">
+            <strong>{offers.length}</strong>
+            <span>ofertas activas</span>
+          </div>
+          <div className="hero-metric-card">
+            <strong>{storeConfig.discounts.memberPercent}%</strong>
+            <span>off con cuenta</span>
           </div>
         </div>
-      )}
-
-      <div style={{
-        display: 'flex',
-        gap: 12,
-        marginBottom: '1.25rem',
-        flexWrap: 'wrap',
-      }}>
-        <div style={{ flex: 1, minWidth: 220, position: 'relative' }}>
-          <Search size={16} style={{
-            position: 'absolute',
-            left: 12,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            color: 'var(--txt-muted)',
-            pointerEvents: 'none',
-          }} />
-          <input
-            className="input"
-            placeholder="Buscar productos..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ paddingLeft: 38 }}
-          />
-        </div>
-        <select
-          className="input"
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value)}
-          style={{ width: 190 }}
-        >
-          <option value="default">Mas recientes</option>
-          <option value="price_asc">Precio: menor a mayor</option>
-          <option value="price_desc">Precio: mayor a menor</option>
-          <option value="name">A - Z</option>
-        </select>
       </div>
 
-      <div style={{
-        display: 'flex',
-        gap: 8,
-        marginBottom: '1.5rem',
-        overflowX: 'auto',
-        paddingBottom: 4,
-        scrollbarWidth: 'none',
-      }}>
+      <div className="card" style={{ marginBottom: '1rem' }}>
+        <div className="shop-toolbar">
+          <div style={{ flex: 1, minWidth: 220, position: 'relative' }}>
+            <Search
+              size={16}
+              style={{
+                position: 'absolute',
+                left: 12,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--txt-muted)',
+                pointerEvents: 'none',
+              }}
+            />
+            <input
+              className="input"
+              placeholder="Buscar productos..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              style={{ paddingLeft: 38 }}
+            />
+          </div>
+          <select className="input shop-sort" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+            <option value="default">Mas recientes</option>
+            <option value="price_asc">Precio menor</option>
+            <option value="price_desc">Precio mayor</option>
+            <option value="name">A - Z</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="category-row">
         <CatPill active={!activeCat} onClick={() => setActiveCat(null)}>
           Todos
         </CatPill>
@@ -155,24 +131,16 @@ export default function ShopPage() {
         <div className="page-loading"><div className="spinner" /></div>
       ) : filtered.length === 0 ? (
         <div className="empty-state">
-          <div className="icon">?</div>
+          <div className="icon">Buscar</div>
           <h3>Sin resultados</h3>
-          <p>Proba con otra busqueda o categoria.</p>
+          <p>Prueba otra busqueda o cambia de categoria.</p>
         </div>
       ) : (
         <>
-          <div style={{
-            fontSize: 13,
-            color: 'var(--txt-muted)',
-            marginBottom: '.75rem',
-          }}>
+          <div style={{ fontSize: 13, color: 'var(--txt-muted)', marginBottom: '0.75rem' }}>
             {filtered.length} producto{filtered.length !== 1 ? 's' : ''}
           </div>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(195px, 1fr))',
-            gap: 16,
-          }}>
+          <div className="product-grid">
             {filtered.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}
@@ -191,14 +159,13 @@ function CatPill({ children, active, onClick }) {
         border: active ? 'none' : '1.5px solid var(--border)',
         background: active ? 'var(--brand)' : '#fff',
         color: active ? '#fff' : 'var(--txt)',
-        borderRadius: 99,
-        padding: '6px 16px',
+        borderRadius: 999,
+        padding: '7px 16px',
         fontSize: 13,
-        fontWeight: 500,
+        fontWeight: 600,
         cursor: 'pointer',
         whiteSpace: 'nowrap',
         fontFamily: "'Sora', sans-serif",
-        transition: 'all .15s',
       }}
     >
       {children}

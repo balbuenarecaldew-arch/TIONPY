@@ -44,7 +44,7 @@ export default function App() {
           <Route path="/producto/:id" element={<ProductDetail />} />
           <Route path="/carrito" element={<CartPage />} />
 
-          <Route path="/checkout" element={<RequireAuth><CheckoutPage /></RequireAuth>} />
+          <Route path="/checkout" element={<CheckoutPage />} />
           <Route path="/mis-pedidos" element={<RequireAuth><MyOrders /></RequireAuth>} />
           <Route path="/mis-pedidos/:id" element={<RequireAuth><OrderDetail /></RequireAuth>} />
           <Route path="/mi-cuenta" element={<RequireAuth><ProfilePage /></RequireAuth>} />

@@ -2,6 +2,10 @@ export const storeConfig = {
   name: 'TIONPY',
   slogan: 'Compra desde tu zona de confort',
   city: 'Ayolas, Misiones',
+  discounts: {
+    memberPercent: 5,
+    memberLabel: 'Descuento por registro',
+  },
   shipping: {
     cost: 25000,
     freeFrom: 300000,
