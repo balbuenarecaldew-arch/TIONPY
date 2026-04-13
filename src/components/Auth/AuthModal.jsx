@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { X, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
+import AddressModal from '../Addresses/AddressModal';
+import { saveUserAddress } from '../../lib/addresses';
 
 export default function AuthModal({ initialMode = 'login', onClose }) {
   const { login, register, resetPassword } = useAuth();
@@ -9,6 +11,7 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
   const [loading, setLoading] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   const [errors, setErrors] = useState({});
+  const [pendingAddressSetup, setPendingAddressSetup] = useState(null);
 
   const [form, setForm] = useState({
     email: '',
@@ -58,14 +61,18 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
         toast.success('Bienvenido de vuelta');
         onClose();
       } else if (mode === 'register') {
-        await register({
+        const createdUser = await register({
           email: form.email,
           password: form.password,
           fullName: form.fullName,
           phone: form.phone,
         });
-        toast.success('Cuenta creada correctamente');
-        onClose();
+        toast.success('Cuenta creada. Guardemos tu primera direccion');
+        setPendingAddressSetup({
+          firebaseUid: createdUser.uid,
+          full_name: form.fullName,
+          phone: form.phone,
+        });
       } else {
         await resetPassword(form.email);
         toast.success('Correo de recuperacion enviado');
@@ -77,6 +84,36 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleFirstAddressSave(values) {
+    await saveUserAddress({
+      firebaseUid: pendingAddressSetup?.firebaseUid,
+      values,
+      isDefault: true,
+    });
+
+    toast.success('Cuenta y direccion listas');
+  }
+
+  if (pendingAddressSetup) {
+    return (
+      <AddressModal
+        title="Guarda tu primera direccion"
+        description="La dejamos lista para que en el checkout no tengas que escribir todo otra vez."
+        initialValues={{
+          label: 'Casa',
+          full_name: pendingAddressSetup.full_name,
+          phone: pendingAddressSetup.phone,
+        }}
+        submitLabel="Guardar y continuar"
+        skipLabel="Despues"
+        allowSkip
+        onSubmit={handleFirstAddressSave}
+        onSkip={() => toast.success('Tu cuenta ya quedo lista. Puedes cargar la direccion despues.')}
+        onClose={onClose}
+      />
+    );
   }
 
   return (

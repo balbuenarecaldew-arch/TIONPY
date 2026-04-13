@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Check,
-  ChevronUp,
   Loader2,
   MapPin,
   Plus,
@@ -15,21 +14,12 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCart } from '../../contexts/CartContext';
 import AuthModal from '../Auth/AuthModal';
+import AddressModal from '../Addresses/AddressModal';
 import { storeConfig } from '../../config/store';
 import { buildCheckoutSummary, generateDeliveryCode } from '../../lib/commerce';
-import { calculateDeliveryQuote, formatFactorRange, parseCoordinatesFromMapInput } from '../../lib/delivery';
+import { calculateDeliveryQuote, formatFactorRange } from '../../lib/delivery';
+import { fetchUserAddresses, saveUserAddress } from '../../lib/addresses';
 import { fetchDeliverySettings } from '../../lib/storeSettings';
-
-const EMPTY_ADDRESS = {
-  label: 'Casa',
-  full_name: '',
-  phone: '',
-  street: '',
-  neighborhood: '',
-  city: storeConfig.city,
-  reference: '',
-  maps_link: '',
-};
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
@@ -43,14 +33,12 @@ export default function CheckoutPage() {
 
   const [addresses, setAddresses] = useState([]);
   const [selectedAddr, setSelectedAddr] = useState(null);
-  const [showAddrForm, setShowAddrForm] = useState(false);
+  const [addressModalOpen, setAddressModalOpen] = useState(false);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [addrLoading, setAddrLoading] = useState(Boolean(user));
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState('register');
-  const [addrErrors, setAddrErrors] = useState({});
-  const [addrForm, setAddrForm] = useState(EMPTY_ADDRESS);
   const [deliverySettings, setDeliverySettings] = useState(null);
 
   const pricingBase = useMemo(
@@ -73,10 +61,6 @@ export default function CheckoutPage() {
     [checkoutItems, user, deliveryQuote.shipping]
   );
   const guestDiscountPreview = Math.round((pricingBase.subtotal * pricingBase.memberDiscountRate) / 100);
-  const parsedAddressLocation = useMemo(
-    () => parseCoordinatesFromMapInput(addrForm.maps_link),
-    [addrForm.maps_link]
-  );
   const deliveryRuleLabel = deliveryQuote.factorRule ? formatFactorRange(deliveryQuote.factorRule) : '';
 
   useEffect(() => {
@@ -100,7 +84,7 @@ export default function CheckoutPage() {
     if (!user) {
       setAddresses([]);
       setSelectedAddr(null);
-      setShowAddrForm(false);
+      setAddressModalOpen(false);
       setAddrLoading(false);
       return;
     }
@@ -109,20 +93,22 @@ export default function CheckoutPage() {
 
     async function fetchAddresses() {
       setAddrLoading(true);
-      const { data } = await supabase
-        .from('addresses')
-        .select('*')
-        .eq('firebase_uid', user.uid)
-        .order('is_default', { ascending: false });
+      let data = [];
+
+      try {
+        data = await fetchUserAddresses(user.uid);
+      } catch (error) {
+        console.error('fetchAddresses error:', error);
+      }
 
       if (cancelled) return;
 
-      setAddresses(data || []);
-      if (data?.length) {
+      setAddresses(data);
+      if (data.length) {
         setSelectedAddr(data.find((addr) => addr.is_default) || data[0]);
-        setShowAddrForm(false);
-      } else {
-        setShowAddrForm(true);
+        setAddressModalOpen(false);
+      } else if (!authOpen) {
+        setAddressModalOpen(true);
       }
       setAddrLoading(false);
     }
@@ -132,81 +118,21 @@ export default function CheckoutPage() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, authOpen]);
 
-  useEffect(() => {
-    setAddrForm((prev) => ({
-      ...prev,
-      full_name: profile?.full_name || prev.full_name,
-      phone: profile?.phone || prev.phone,
-      city: prev.city || storeConfig.city,
-    }));
-  }, [profile]);
-
-  function setAddrField(key, value) {
-    setAddrForm((prev) => ({ ...prev, [key]: value }));
-    setAddrErrors((prev) => ({ ...prev, [key]: '' }));
-  }
-
-  function validateAddress() {
-    const nextErrors = {};
-
-    if (!addrForm.full_name.trim()) nextErrors.full_name = 'Requerido';
-    if (!addrForm.phone.trim()) nextErrors.phone = 'Requerido';
-    if (!addrForm.street.trim()) nextErrors.street = 'Requerido';
-
-    setAddrErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
-  }
-
-  async function saveAddress() {
+  async function handleSaveAddress(values) {
     if (!user) {
-      setAuthMode('register');
-      setAuthOpen(true);
-      return;
+      throw new Error('Necesitas iniciar sesion para guardar direcciones');
     }
 
-    if (!validateAddress()) return;
-
-    const isFirstAddress = addresses.length === 0;
-    const parsedLocation = addrForm.maps_link.trim()
-      ? parseCoordinatesFromMapInput(addrForm.maps_link)
-      : null;
-
-    if (addrForm.maps_link.trim() && !parsedLocation) {
-      toast.error('No se pudo leer la ubicacion de Google Maps');
-      return;
-    }
-
-    const payload = {
-      ...addrForm,
-      firebase_uid: user.uid,
-      full_name: addrForm.full_name.trim(),
-      phone: addrForm.phone.trim(),
-      street: addrForm.street.trim(),
-      neighborhood: addrForm.neighborhood.trim(),
-      city: addrForm.city.trim(),
-      reference: addrForm.reference.trim(),
-      maps_link: addrForm.maps_link.trim(),
-      latitude: parsedLocation?.lat ?? null,
-      longitude: parsedLocation?.lng ?? null,
-      is_default: isFirstAddress,
-    };
-
-    const { data, error } = await supabase
-      .from('addresses')
-      .insert(payload)
-      .select()
-      .single();
-
-    if (error) {
-      toast.error('No se pudo guardar la direccion');
-      return;
-    }
+    const data = await saveUserAddress({
+      firebaseUid: user.uid,
+      values,
+      isDefault: addresses.length === 0,
+    });
 
     setAddresses((prev) => [data, ...prev]);
     setSelectedAddr(data);
-    setShowAddrForm(false);
     toast.success('Direccion guardada');
   }
 
@@ -515,120 +441,13 @@ export default function CheckoutPage() {
 
                     <button
                       type="button"
-                      onClick={() => setShowAddrForm((prev) => !prev)}
+                      onClick={() => setAddressModalOpen(true)}
                       className="btn btn-outline"
                       style={{ justifyContent: 'center' }}
                     >
-                      {showAddrForm ? <ChevronUp size={16} /> : <Plus size={16} />}
-                      {showAddrForm ? 'Ocultar formulario' : 'Agregar nueva direccion'}
+                      <Plus size={16} />
+                      {addresses.length ? 'Agregar nueva direccion' : 'Guardar mi direccion'}
                     </button>
-
-                    {showAddrForm && (
-                      <div className="card" style={{ background: 'var(--bg)', padding: '1rem' }}>
-                        <div className="responsive-form-grid">
-                          <div className="field">
-                            <label>Etiqueta</label>
-                            <select
-                              className="input"
-                              value={addrForm.label}
-                              onChange={(event) => setAddrField('label', event.target.value)}
-                              autoComplete="address-level1"
-                            >
-                              <option value="Casa">Casa</option>
-                              <option value="Trabajo">Trabajo</option>
-                              <option value="Otro">Otro</option>
-                            </select>
-                          </div>
-
-                          <div className="field">
-                            <label>Nombre completo *</label>
-                            <input
-                              className={`input ${addrErrors.full_name ? 'error' : ''}`}
-                              value={addrForm.full_name}
-                              onChange={(event) => setAddrField('full_name', event.target.value)}
-                              autoComplete="name"
-                            />
-                            {addrErrors.full_name && <span className="error-msg">{addrErrors.full_name}</span>}
-                          </div>
-
-                          <div className="field">
-                            <label>Telefono *</label>
-                            <input
-                              className={`input ${addrErrors.phone ? 'error' : ''}`}
-                              value={addrForm.phone}
-                              onChange={(event) => setAddrField('phone', event.target.value)}
-                              autoComplete="tel"
-                              inputMode="tel"
-                              placeholder="0981 000 000"
-                            />
-                            {addrErrors.phone && <span className="error-msg">{addrErrors.phone}</span>}
-                          </div>
-
-                          <div className="field full-span">
-                            <label>Calle y numero *</label>
-                            <input
-                              className={`input ${addrErrors.street ? 'error' : ''}`}
-                              value={addrForm.street}
-                              onChange={(event) => setAddrField('street', event.target.value)}
-                              autoComplete="street-address"
-                            />
-                            {addrErrors.street && <span className="error-msg">{addrErrors.street}</span>}
-                          </div>
-
-                          <div className="field">
-                            <label>Barrio</label>
-                            <input
-                              className="input"
-                              value={addrForm.neighborhood}
-                              onChange={(event) => setAddrField('neighborhood', event.target.value)}
-                              autoComplete="address-level2"
-                            />
-                          </div>
-
-                          <div className="field">
-                            <label>Ciudad</label>
-                            <input
-                              className="input"
-                              value={addrForm.city}
-                              onChange={(event) => setAddrField('city', event.target.value)}
-                              autoComplete="address-level2"
-                            />
-                          </div>
-
-                          <div className="field full-span">
-                            <label>Referencia</label>
-                            <input
-                              className="input"
-                              value={addrForm.reference}
-                              onChange={(event) => setAddrField('reference', event.target.value)}
-                              autoComplete="off"
-                              placeholder="Casa azul, frente a la plaza..."
-                            />
-                          </div>
-
-                          <div className="field full-span">
-                            <label>Ubicacion de Google Maps</label>
-                            <input
-                              className="input"
-                              value={addrForm.maps_link}
-                              onChange={(event) => setAddrField('maps_link', event.target.value)}
-                              autoComplete="off"
-                              placeholder="Pega el link compartido de Google Maps o lat,lng"
-                            />
-                            <small>
-                              {parsedAddressLocation
-                                ? `Coordenadas detectadas: ${parsedAddressLocation.lat.toFixed(6)}, ${parsedAddressLocation.lng.toFixed(6)}`
-                                : 'Esto permite calcular el delivery segun la distancia real.'}
-                            </small>
-                          </div>
-                        </div>
-
-                        <button onClick={saveAddress} className="btn btn-primary btn-full" style={{ marginTop: '1rem' }}>
-                          <Check size={16} />
-                          Guardar direccion
-                        </button>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
@@ -739,7 +558,7 @@ export default function CheckoutPage() {
                 <div style={{ fontSize: 13 }}>
                   {deliveryQuote.mode === 'distance' || deliveryQuote.mode === 'free'
                     ? `Factor ${deliveryQuote.factor} aplicado${deliveryRuleLabel ? ` para ${deliveryRuleLabel}` : ''}.`
-                    : 'Pega la ubicacion de Google Maps de la direccion para calcular el costo exacto por distancia.'}
+                    : 'Puedes cargar una ubicacion exacta en tu direccion para calcular el costo por distancia.'}
                 </div>
               </div>
             </div>
@@ -804,6 +623,26 @@ export default function CheckoutPage() {
         <AuthModal
           initialMode={authMode}
           onClose={() => setAuthOpen(false)}
+        />
+      )}
+
+      {user && addressModalOpen && (
+        <AddressModal
+          title={addresses.length ? 'Agregar nueva direccion' : 'Guarda tu direccion'}
+          description={
+            addresses.length
+              ? 'Deja otra direccion lista para futuras entregas.'
+              : 'Guardala ahora y tu checkout va a salir mucho mas rapido.'
+          }
+          initialValues={{
+            label: 'Casa',
+            full_name: profile?.full_name || '',
+            phone: profile?.phone || '',
+            city: storeConfig.city,
+          }}
+          submitLabel="Guardar direccion"
+          onSubmit={handleSaveAddress}
+          onClose={() => setAddressModalOpen(false)}
         />
       )}
     </div>
