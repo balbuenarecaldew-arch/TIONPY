@@ -16,11 +16,15 @@ create table if not exists products (
   old_price bigint,
   category_id integer references categories(id) on delete set null,
   image_url text not null default '',
+  image_urls jsonb not null default '[]'::jsonb,
   stock integer not null default 0,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table if exists products
+  add column if not exists image_urls jsonb not null default '[]'::jsonb;
 
 create table if not exists profiles (
   id uuid primary key default gen_random_uuid(),

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Minus, Package, Plus, ShieldCheck, ShoppingCart, Truck, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCart } from '../../contexts/CartContext';
 import { getCategoryLabel, storeConfig } from '../../config/store';
+import { getProductImages } from '../../lib/productImages';
 
 const EMOJI_MAP = {
   1: 'Cel',
@@ -25,6 +26,7 @@ export default function ProductDetail() {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [qty, setQty] = useState(1);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
 
   useEffect(() => {
     supabase
@@ -42,6 +44,15 @@ export default function ProductDetail() {
     if (!product) return;
     setQty((prev) => Math.max(1, Math.min(prev, product.stock || 1)));
   }, [product]);
+
+  const productImages = useMemo(
+    () => getProductImages(product),
+    [product]
+  );
+
+  useEffect(() => {
+    setActiveImageIndex(0);
+  }, [product?.id]);
 
   if (loading) {
     return <div className="page-loading"><div className="spinner" /></div>;
@@ -66,6 +77,7 @@ export default function ProductDetail() {
     : null;
   const outOfStock = product.stock <= 0;
   const inCart = items.find((item) => item.id === product.id);
+  const activeImage = productImages[activeImageIndex] || '';
 
   function changeQty(nextQty) {
     if (outOfStock) return;
@@ -109,38 +121,55 @@ export default function ProductDetail() {
       </Link>
 
       <div className="product-detail-grid">
-        <div
-          style={{
-            background: '#F3F4F6',
-            borderRadius: 'var(--radius-lg)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            minHeight: 320,
-            fontSize: 72,
-            position: 'relative',
-            overflow: 'hidden',
-          }}
-        >
-          {product.image_url ? (
-            <img
-              src={product.image_url}
-              alt={product.name}
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'contain',
-                borderRadius: 'var(--radius-lg)',
-              }}
-            />
-          ) : (
-            EMOJI_MAP[product.category_id] || 'Item'
-          )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div
+            style={{
+              background: '#F3F4F6',
+              borderRadius: 'var(--radius-lg)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 320,
+              fontSize: 72,
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            {activeImage ? (
+              <img
+                src={activeImage}
+                alt={product.name}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                  borderRadius: 'var(--radius-lg)',
+                }}
+              />
+            ) : (
+              EMOJI_MAP[product.category_id] || 'Item'
+            )}
 
-          {discount && (
-            <span className="promo-pill" style={{ top: 16, right: 16, background: 'var(--danger)', color: '#fff' }}>
-              -{discount}% OFF
-            </span>
+            {discount && (
+              <span className="promo-pill" style={{ top: 16, right: 16, background: 'var(--danger)', color: '#fff' }}>
+                -{discount}% OFF
+              </span>
+            )}
+          </div>
+
+          {productImages.length > 1 && (
+            <div className="product-gallery-strip">
+              {productImages.map((imageUrl, index) => (
+                <button
+                  key={`${imageUrl}-${index}`}
+                  type="button"
+                  className={`product-gallery-thumb ${index === activeImageIndex ? 'active' : ''}`}
+                  onClick={() => setActiveImageIndex(index)}
+                >
+                  <img src={imageUrl} alt={`${product.name} ${index + 1}`} />
+                </button>
+              ))}
+            </div>
           )}
         </div>
 

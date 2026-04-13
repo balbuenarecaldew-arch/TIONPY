@@ -15,6 +15,7 @@ import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from 'firebas
 import { storage } from '../../lib/firebase';
 import { supabase } from '../../lib/supabase';
 import { getCategoryLabel } from '../../config/store';
+import { getPrimaryProductImage, getProductImages, mergeUniqueImageUrls, parseImageUrlText } from '../../lib/productImages';
 
 const EMPTY = {
   name: '',
@@ -26,7 +27,10 @@ const EMPTY = {
   stock: '',
   is_active: true,
   image_url: '',
+  image_urls_text: '',
 };
+
+const MAX_PRODUCT_IMAGES = 6;
 
 const PRODUCT_FILTERS = [
   { value: 'active', label: 'Activos' },
@@ -59,6 +63,19 @@ function getUploadErrorMessage(error) {
   return error.message || 'No se pudo subir la imagen.';
 }
 
+function isFirebaseHostedUrl(url) {
+  return /firebasestorage|googleapis\.com|^gs:\/\//.test(String(url || ''));
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error(`No se pudo leer ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function ManageProducts() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -73,8 +90,8 @@ export default function ManageProducts() {
   const [bulkPercent, setBulkPercent] = useState('10');
   const [bulkScope, setBulkScope] = useState('filtered');
   const [bulkCategoryId, setBulkCategoryId] = useState('');
-  const [imgFile, setImgFile] = useState(null);
-  const [imgPrev, setImgPrev] = useState('');
+  const [imgFiles, setImgFiles] = useState([]);
+  const [imgPreviews, setImgPreviews] = useState([]);
   const [uploadPct, setUploadPct] = useState(0);
   const [imgError, setImgError] = useState('');
   const fileRef = useRef(null);
@@ -121,58 +138,104 @@ export default function ManageProducts() {
 
   function openAdd() {
     setForm(EMPTY);
-    setImgFile(null);
-    setImgPrev('');
+    setImgFiles([]);
+    setImgPreviews([]);
     setImgError('');
     setUploadPct(0);
+    if (fileRef.current) fileRef.current.value = '';
     setModal('add');
   }
 
   function openEdit(product) {
+    const existingImages = getProductImages(product);
+
     setForm({
       ...product,
       price: product.price,
       old_price: product.old_price || '',
       category_id: product.category_id || '',
+      image_urls_text: existingImages.join('\n'),
     });
-    setImgFile(null);
-    setImgPrev(product.image_url || '');
+    setImgFiles([]);
+    setImgPreviews(existingImages);
     setImgError('');
     setUploadPct(0);
+    if (fileRef.current) fileRef.current.value = '';
     setModal('edit');
   }
 
   function setField(key, value) {
-    setForm((prev) => ({ ...prev, [key]: value }));
     if (key === 'image_url') {
-      setImgPrev(value.trim());
+      const nextUrls = mergeUniqueImageUrls([value.trim()], parseImageUrlText(form.image_urls_text));
+      setForm((prev) => ({
+        ...prev,
+        image_url: value,
+        image_urls_text: nextUrls.join('\n'),
+      }));
+      setImgPreviews((prev) => mergeUniqueImageUrls(nextUrls, prev.filter((item) => item.startsWith('blob:'))));
       setImgError('');
-      if (value.trim()) {
-        setImgFile(null);
-        setUploadPct(0);
-        if (fileRef.current) {
-          fileRef.current.value = '';
-        }
-      }
+      return;
+    }
+
+    setForm((prev) => ({ ...prev, [key]: value }));
+
+    if (key === 'image_urls_text') {
+      setImgPreviews((prev) =>
+        mergeUniqueImageUrls(parseImageUrlText(value), prev.filter((item) => item.startsWith('blob:')))
+      );
+      setImgError('');
     }
   }
 
   function handleImgChange(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      toast.error('Selecciona un archivo de imagen valido');
-      return;
-    }
-    if (file.size > 3 * 1024 * 1024) {
-      toast.error('La imagen no puede superar 3 MB');
+    const nextFiles = Array.from(event.target.files || []);
+    if (!nextFiles.length) return;
+
+    const invalidType = nextFiles.find((file) => !file.type.startsWith('image/'));
+    if (invalidType) {
+      toast.error(`"${invalidType.name}" no es una imagen valida`);
       return;
     }
 
-    setImgFile(file);
-    setImgPrev(URL.createObjectURL(file));
+    const invalidSize = nextFiles.find((file) => file.size > 3 * 1024 * 1024);
+    if (invalidSize) {
+      toast.error(`"${invalidSize.name}" supera los 3 MB`);
+      return;
+    }
+
+    const currentUrls = parseImageUrlText(form.image_urls_text);
+    const currentGallery = mergeUniqueImageUrls(
+      currentUrls,
+      imgPreviews.filter((item) => item.startsWith('blob:'))
+    );
+    const availableSlots = MAX_PRODUCT_IMAGES - currentGallery.length;
+
+    if (availableSlots <= 0) {
+      toast.error(`Este producto admite hasta ${MAX_PRODUCT_IMAGES} fotos`);
+      if (fileRef.current) fileRef.current.value = '';
+      return;
+    }
+
+    const acceptedFiles = nextFiles.slice(0, availableSlots);
+
+    if (acceptedFiles.length < nextFiles.length) {
+      toast.error(`Solo se agregaron ${acceptedFiles.length} foto(s). El maximo es ${MAX_PRODUCT_IMAGES}.`);
+    }
+
+    const nextPreviews = acceptedFiles.map((file) => URL.createObjectURL(file));
+    setImgFiles((prev) => [...prev, ...acceptedFiles]);
+    setImgPreviews((prev) => mergeUniqueImageUrls(currentUrls, prev.filter((item) => item.startsWith('blob:')), nextPreviews));
     setImgError('');
     setUploadPct(0);
+    if (fileRef.current) fileRef.current.value = '';
+  }
+
+  function clearPendingFiles() {
+    setImgFiles([]);
+    setImgPreviews(parseImageUrlText(form.image_urls_text));
+    setUploadPct(0);
+    setImgError('');
+    if (fileRef.current) fileRef.current.value = '';
   }
 
   function getBulkTargets() {
@@ -191,23 +254,21 @@ export default function ManageProducts() {
     return filteredProducts.filter((product) => product.is_active);
   }
 
-  async function uploadImage(productId) {
+  async function uploadSingleImage(productId, file, fileIndex, totalFiles) {
     if (!storage) {
       throw new Error('Firebase Storage no esta configurado');
     }
 
-    if (!imgFile) return form.image_url.trim() || '';
-
     return new Promise((resolve, reject) => {
-      const fileExt = imgFile.name.includes('.') ? imgFile.name.split('.').pop().toLowerCase() : 'jpg';
+      const fileExt = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : 'jpg';
       const safeName = form.name
         .trim()
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/(^-|-$)/g, '') || `product-${productId}`;
-      const storageRef = ref(storage, `products/${productId}/${Date.now()}-${safeName}.${fileExt}`);
-      const task = uploadBytesResumable(storageRef, imgFile, {
-        contentType: imgFile.type || 'image/jpeg',
+      const storageRef = ref(storage, `products/${productId}/${Date.now()}-${fileIndex + 1}-${safeName}.${fileExt}`);
+      const task = uploadBytesResumable(storageRef, file, {
+        contentType: file.type || 'image/jpeg',
       });
       let settled = false;
 
@@ -222,12 +283,18 @@ export default function ManageProducts() {
         try {
           task.cancel();
         } catch {}
-        finish(reject, new Error('La subida de la imagen tardo demasiado. Revisa Firebase Storage.'));
+        finish(reject, new Error(`La subida de "${file.name}" tardo demasiado. Revisa Firebase Storage.`));
       }, 45000);
 
       task.on(
         'state_changed',
-        (snapshot) => setUploadPct(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)),
+        (snapshot) => {
+          const fileProgress = snapshot.totalBytes
+            ? snapshot.bytesTransferred / snapshot.totalBytes
+            : 0;
+          const overallProgress = ((fileIndex + fileProgress) / totalFiles) * 100;
+          setUploadPct(Math.round(overallProgress));
+        },
         (error) => finish(reject, error),
         async () => {
           try {
@@ -241,6 +308,81 @@ export default function ManageProducts() {
     });
   }
 
+  async function resolveImageGallery(productId) {
+    const manualUrls = parseImageUrlText(form.image_urls_text);
+
+    if (!imgFiles.length) {
+      return {
+        urls: manualUrls,
+        warning: '',
+      };
+    }
+
+    const uploadedUrls = [];
+    const fallbackFiles = [];
+
+    for (let index = 0; index < imgFiles.length; index += 1) {
+      const file = imgFiles[index];
+
+      try {
+        const url = await uploadSingleImage(productId, file, index, imgFiles.length);
+        uploadedUrls.push(url);
+      } catch (error) {
+        console.error('Product image upload error:', error);
+        try {
+          const inlineUrl = await readFileAsDataUrl(file);
+          uploadedUrls.push(inlineUrl);
+          fallbackFiles.push(file.name);
+        } catch (readError) {
+          console.error('Product image fallback error:', readError);
+          throw error;
+        }
+      }
+    }
+
+    const urls = mergeUniqueImageUrls(manualUrls, uploadedUrls).slice(0, MAX_PRODUCT_IMAGES);
+    const warning = fallbackFiles.length
+      ? `Algunas fotos se guardaron en modo interno porque Firebase Storage no respondio (${fallbackFiles.length}).`
+      : '';
+
+    return { urls, warning };
+  }
+
+  async function persistProductImages(productId, urls) {
+    const nextPrimary = urls[0] || '';
+
+    const { error } = await supabase
+      .from('products')
+      .update({
+        image_url: nextPrimary,
+        image_urls: urls,
+      })
+      .eq('id', productId);
+
+    if (!error) {
+      return {
+        gallerySupported: true,
+        warning: '',
+      };
+    }
+
+    if (String(error.message || '').includes('image_urls')) {
+      const { error: fallbackError } = await supabase
+        .from('products')
+        .update({ image_url: nextPrimary })
+        .eq('id', productId);
+
+      if (fallbackError) throw fallbackError;
+
+      return {
+        gallerySupported: false,
+        warning: 'La foto principal se guardo, pero para varias fotos debes ejecutar de nuevo schema.sql en Supabase.',
+      };
+    }
+
+    throw error;
+  }
+
   async function handleSave() {
     if (!form.name || !form.price || !form.stock) {
       toast.error('Nombre, precio y stock son obligatorios');
@@ -250,6 +392,8 @@ export default function ManageProducts() {
     setSaving(true);
 
     try {
+      const manualUrls = parseImageUrlText(form.image_urls_text);
+      const baseImages = mergeUniqueImageUrls(manualUrls).slice(0, MAX_PRODUCT_IMAGES);
       const payload = {
         name: form.name.trim(),
         brand: form.brand.trim(),
@@ -259,25 +403,32 @@ export default function ManageProducts() {
         category_id: form.category_id || null,
         stock: Number.parseInt(form.stock, 10),
         is_active: form.is_active,
-        image_url: form.image_url.trim(),
+        image_url: baseImages[0] || '',
+        image_urls: baseImages,
       };
 
       let imageWarning = '';
       setImgError('');
 
       if (modal === 'add') {
-        const { data: created, error } = await supabase.from('products').insert(payload).select().single();
-        if (error) throw error;
+        let createResult = await supabase.from('products').insert(payload).select().single();
+        if (createResult.error && String(createResult.error.message || '').includes('image_urls')) {
+          const fallbackPayload = { ...payload };
+          delete fallbackPayload.image_urls;
+          createResult = await supabase.from('products').insert(fallbackPayload).select().single();
+          imageWarning = baseImages.length > 1
+            ? 'La foto principal se guardo, pero para varias fotos debes ejecutar de nuevo schema.sql en Supabase.'
+            : imageWarning;
+        }
+        if (createResult.error) throw createResult.error;
+        const created = createResult.data;
 
-        if (imgFile) {
+        if (imgFiles.length) {
           try {
-            const imageUrl = await uploadImage(created.id);
-            if (imageUrl) {
-              const { error: imageError } = await supabase
-                .from('products')
-                .update({ image_url: imageUrl })
-                .eq('id', created.id);
-              if (imageError) throw imageError;
+            const { urls, warning } = await resolveImageGallery(created.id);
+            if (urls.length) {
+              const persistResult = await persistProductImages(created.id, urls);
+              imageWarning = [warning, persistResult.warning].filter(Boolean).join(' ');
             }
           } catch (error) {
             console.error('Product image upload error:', error);
@@ -286,20 +437,16 @@ export default function ManageProducts() {
           }
         }
 
-        toast.success(imageWarning ? 'Producto creado sin imagen' : 'Producto creado');
+        toast.success('Producto creado');
       } else {
         const nextUpdate = { ...payload };
 
-        if (imgFile) {
+        if (imgFiles.length) {
           try {
-            const imageUrl = await uploadImage(form.id);
-            nextUpdate.image_url = imageUrl;
-
-            if (imgFile && form.image_url && /firebasestorage|googleapis\.com|^gs:\/\//.test(form.image_url)) {
-              try {
-                await deleteObject(ref(storage, form.image_url));
-              } catch {}
-            }
+            const { urls, warning } = await resolveImageGallery(form.id);
+            nextUpdate.image_url = urls[0] || '';
+            nextUpdate.image_urls = urls;
+            imageWarning = warning;
           } catch (error) {
             console.error('Product image upload error:', error);
             imageWarning = getUploadErrorMessage(error) || 'Los cambios se guardaron sin cambiar la imagen.';
@@ -308,9 +455,21 @@ export default function ManageProducts() {
         }
 
         const { error } = await supabase.from('products').update(nextUpdate).eq('id', form.id);
-        if (error) throw error;
+        if (error) {
+          if (String(error.message || '').includes('image_urls')) {
+            const fallbackUpdate = { ...nextUpdate };
+            delete fallbackUpdate.image_urls;
+            const { error: fallbackError } = await supabase.from('products').update(fallbackUpdate).eq('id', form.id);
+            if (fallbackError) throw fallbackError;
+            imageWarning = [imageWarning, 'La foto principal se guardo, pero para varias fotos debes ejecutar de nuevo schema.sql en Supabase.']
+              .filter(Boolean)
+              .join(' ');
+          } else {
+            throw error;
+          }
+        }
 
-        toast.success(imageWarning ? 'Producto actualizado sin cambiar imagen' : 'Producto actualizado');
+        toast.success('Producto actualizado');
       }
 
       await load();
@@ -332,10 +491,14 @@ export default function ManageProducts() {
     const confirmed = window.confirm(`Eliminar "${product.name}"? Esta accion no se puede deshacer.`);
     if (!confirmed) return;
 
-    if (product.image_url && /firebasestorage|googleapis\.com|^gs:\/\//.test(product.image_url)) {
-      try {
-        await deleteObject(ref(storage, product.image_url));
-      } catch {}
+    const hostedImages = getProductImages(product).filter(isFirebaseHostedUrl);
+
+    if (storage) {
+      for (const imageUrl of hostedImages) {
+        try {
+          await deleteObject(ref(storage, imageUrl));
+        } catch {}
+      }
     }
 
     const { error } = await supabase.from('products').delete().eq('id', product.id);
@@ -604,6 +767,8 @@ export default function ManageProducts() {
           const percentOff = product.old_price && product.old_price > product.price
             ? Math.round((1 - product.price / product.old_price) * 100)
             : null;
+          const productImages = getProductImages(product);
+          const primaryImage = getPrimaryProductImage(product);
 
           return (
             <div key={product.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -621,8 +786,8 @@ export default function ManageProducts() {
                   position: 'relative',
                 }}
               >
-                {product.image_url ? (
-                  <img src={product.image_url} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                {primaryImage ? (
+                  <img src={primaryImage} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
                   'Sin imagen'
                 )}
@@ -638,17 +803,20 @@ export default function ManageProducts() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
                   <div>
                     <div style={{ fontWeight: 700, marginBottom: 2 }}>{product.name}</div>
-                    <div style={{ fontSize: 13, color: 'var(--txt-muted)' }}>{product.brand || 'Sin marca'}</div>
-                  </div>
-                  <span className={`badge ${product.is_active ? 'badge-success' : 'badge-gray'}`}>
-                    {product.is_active ? 'Visible' : 'Archivado'}
-                  </span>
+                  <div style={{ fontSize: 13, color: 'var(--txt-muted)' }}>{product.brand || 'Sin marca'}</div>
                 </div>
-
-                <div style={{ fontSize: 13, color: 'var(--txt-muted)', marginTop: 8 }}>
-                  {product.categories ? getCategoryLabel(product.categories) : 'Sin categoria'}
-                </div>
+                <span className={`badge ${product.is_active ? 'badge-success' : 'badge-gray'}`}>
+                  {product.is_active ? 'Visible' : 'Archivado'}
+                </span>
               </div>
+
+              <div style={{ fontSize: 13, color: 'var(--txt-muted)', marginTop: 8 }}>
+                {product.categories ? getCategoryLabel(product.categories) : 'Sin categoria'}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--txt-muted)', marginTop: 4 }}>
+                {productImages.length} foto{productImages.length !== 1 ? 's' : ''}
+              </div>
+            </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                 <div>
@@ -706,11 +874,11 @@ export default function ManageProducts() {
 
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div className="field">
-                <label>Imagen del producto</label>
+                <label>Fotos del producto</label>
                 <div
                   onClick={() => fileRef.current?.click()}
                   style={{
-                    height: 140,
+                    minHeight: 140,
                     border: '2px dashed var(--border)',
                     borderRadius: 'var(--radius)',
                     display: 'flex',
@@ -719,28 +887,71 @@ export default function ManageProducts() {
                     cursor: 'pointer',
                     background: 'var(--bg)',
                     overflow: 'hidden',
+                    padding: 12,
                   }}
                 >
-                  {imgPrev ? (
-                    <img src={imgPrev} alt="" style={{ maxHeight: 138, maxWidth: '100%', objectFit: 'contain' }} />
+                  {imgPreviews.length ? (
+                    <div style={{ width: '100%' }}>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(88px, 1fr))',
+                          gap: 10,
+                        }}
+                      >
+                        {imgPreviews.map((imageUrl, index) => (
+                          <div
+                            key={`${imageUrl}-${index}`}
+                            style={{
+                              borderRadius: 10,
+                              overflow: 'hidden',
+                              background: '#fff',
+                              border: '1px solid var(--border)',
+                              aspectRatio: '1 / 1',
+                            }}
+                          >
+                            <img
+                              src={imageUrl}
+                              alt=""
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: 10, fontSize: 12, color: 'var(--txt-muted)', textAlign: 'center' }}>
+                        {imgPreviews.length} / {MAX_PRODUCT_IMAGES} fotos
+                      </div>
+                    </div>
                   ) : (
                     <div style={{ textAlign: 'center', color: 'var(--txt-muted)' }}>
                       <ImagePlus size={28} style={{ marginBottom: 8 }} />
-                      <div style={{ fontSize: 13 }}>Click para subir imagen (max. 3 MB)</div>
+                      <div style={{ fontSize: 13 }}>Click para subir una o varias fotos</div>
+                      <div style={{ fontSize: 12, marginTop: 4 }}>Hasta {MAX_PRODUCT_IMAGES} imagenes, 3 MB cada una</div>
                     </div>
                   )}
                 </div>
-                <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImgChange} />
+                <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleImgChange} />
+
+                {imgFiles.length > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+                    <button type="button" className="btn btn-outline btn-sm" onClick={clearPendingFiles}>
+                      Quitar fotos nuevas
+                    </button>
+                  </div>
+                )}
 
                 <div className="field" style={{ marginTop: 10 }}>
-                  <label>URL de imagen opcional</label>
-                  <input
+                  <label>URLs de fotos opcionales</label>
+                  <textarea
                     className="input"
-                    value={form.image_url}
-                    onChange={(event) => setField('image_url', event.target.value)}
-                    placeholder="https://... o usa solo el archivo"
+                    rows={4}
+                    value={form.image_urls_text}
+                    onChange={(event) => setField('image_urls_text', event.target.value)}
+                    placeholder={'https://...\nhttps://...\nUna URL por linea'}
                   />
-                  <small>Puedes usar archivo o una URL directa publica. Si Storage falla, la URL sigue funcionando.</small>
+                  <small>
+                    Puedes mezclar archivos y URLs publicas. Si Firebase Storage falla, intentaremos guardar las fotos igual.
+                  </small>
                 </div>
 
                 {uploadPct > 0 && uploadPct < 100 && (

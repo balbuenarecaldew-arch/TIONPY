@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { useCart } from '../../contexts/CartContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { storeConfig } from '../../config/store';
+import { getPrimaryProductImage } from '../../lib/productImages';
 
 const EMOJI_MAP = { 1: 'Cel', 2: 'Aud', 3: 'Game', 4: 'Acc', 5: 'Home', 6: 'PC' };
 
@@ -19,6 +20,7 @@ export default function ProductCard({ product }) {
   const outOfStock = product.stock <= 0;
   const inCart = items.find((item) => item.id === product.id);
   const lineTotal = inCart ? inCart.price * inCart.qty : product.price;
+  const primaryImage = getPrimaryProductImage(product);
 
   function handleAdd(event) {
     event.preventDefault();
@@ -73,9 +75,9 @@ export default function ProductCard({ product }) {
               userSelect: 'none',
             }}
           >
-            {product.image_url ? (
+            {primaryImage ? (
               <img
-                src={product.image_url}
+                src={primaryImage}
                 alt={product.name}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
