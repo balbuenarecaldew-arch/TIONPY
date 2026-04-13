@@ -118,16 +118,6 @@ export default function AddressModal({
 
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div className="checkout-highlight-card" style={{ marginTop: 0 }}>
-              <MapPin size={18} />
-              <div>
-                <div style={{ fontWeight: 700, marginBottom: 2 }}>Guardamos tu direccion para las proximas compras</div>
-                <div style={{ fontSize: 13 }}>
-                  Asi el checkout se autocompleta y no tienes que escribir todo de nuevo.
-                </div>
-              </div>
-            </div>
-
             <div className="responsive-form-grid">
               <div className="field">
                 <label>Etiqueta</label>
@@ -270,8 +260,8 @@ export default function AddressModal({
                     }}
                   >
                     {parsedLocation
-                      ? 'La ubicacion exacta ya quedo cargada. Puedes guardar la direccion asi.'
-                      : 'Si quieres, tambien puedes pegar un link compartido o las coordenadas manualmente.'}
+                      ? 'La ubicacion exacta ya quedo cargada.'
+                      : 'Puedes usar el GPS del telefono o marcar el punto en el mapa.'}
                   </div>
 
                   {showMapPicker && (
@@ -288,12 +278,12 @@ export default function AddressModal({
                       value={form.maps_link}
                       onChange={(event) => setField('maps_link', event.target.value)}
                       autoComplete="off"
-                      placeholder="Se puede completar sola con el GPS o pegar un link"
+                      placeholder="Se completa con GPS, mapa o coordenadas"
                     />
                     <small>
                       {parsedLocation
                         ? `Coordenadas detectadas: ${parsedLocation.lat.toFixed(6)}, ${parsedLocation.lng.toFixed(6)}`
-                        : 'Es opcional. Sirve para calcular delivery exacto por distancia.'}
+                        : 'Es opcional. Sirve para calcular mejor el delivery.'}
                     </small>
                     {locationError && <span className="error-msg">{locationError}</span>}
                   </div>

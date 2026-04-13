@@ -70,6 +70,59 @@ function isBlobPreviewUrl(url) {
   return /^blob:/.test(String(url || ''));
 }
 
+function releaseBlobPreviews(urls) {
+  for (const url of urls) {
+    if (isBlobPreviewUrl(url)) {
+      URL.revokeObjectURL(url);
+    }
+  }
+}
+
+function loadImageElement(file) {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error(`No se pudo procesar "${file.name}" como imagen.`));
+    };
+
+    image.src = objectUrl;
+  });
+}
+
+async function compressImageToDataUrl(file) {
+  const image = await loadImageElement(file);
+  const maxWidth = 1280;
+  const maxHeight = 1280;
+  const scale = Math.min(1, maxWidth / image.width, maxHeight / image.height);
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('No se pudo preparar la compresion de la imagen.');
+  }
+
+  context.drawImage(image, 0, 0, width, height);
+
+  const webp = canvas.toDataURL('image/webp', 0.72);
+  if (webp && webp.startsWith('data:image/webp')) {
+    return webp;
+  }
+
+  return canvas.toDataURL('image/jpeg', 0.78);
+}
+
 export default function ManageProducts() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -169,6 +222,7 @@ export default function ManageProducts() {
   const discountedCount = products.filter((product) => product.old_price && product.old_price > product.price).length;
 
   function closeModal() {
+    releaseBlobPreviews(imgPreviews);
     setModal(null);
     setForm(EMPTY);
     setImgFiles([]);
@@ -179,6 +233,7 @@ export default function ManageProducts() {
   }
 
   function openAdd() {
+    releaseBlobPreviews(imgPreviews);
     setForm(EMPTY);
     setImgFiles([]);
     setImgPreviews([]);
@@ -191,6 +246,7 @@ export default function ManageProducts() {
   function openEdit(product) {
     const existingImages = getProductImages(product);
 
+    releaseBlobPreviews(imgPreviews);
     setForm({
       ...product,
       price: product.price,
@@ -261,6 +317,7 @@ export default function ManageProducts() {
   }
 
   function clearPendingFiles() {
+    releaseBlobPreviews(imgPreviews.filter((item) => isBlobPreviewUrl(item)));
     setImgFiles([]);
     setImgPreviews(parseImageUrlText(form.image_urls_text));
     setUploadPct(0);
@@ -373,15 +430,45 @@ export default function ManageProducts() {
     throw error;
   }
 
+  async function persistInlineFallbackImages(productId, manualUrls, files) {
+    const inlineUrls = [];
+
+    for (const file of files) {
+      const dataUrl = await compressImageToDataUrl(file);
+      inlineUrls.push(dataUrl);
+    }
+
+    const finalUrls = mergeUniqueImageUrls(manualUrls, inlineUrls).slice(0, MAX_PRODUCT_IMAGES);
+    const result = await persistProductImages(productId, finalUrls);
+
+    patchLocalProduct(productId, {
+      image_url: finalUrls[0] || '',
+      image_urls: finalUrls,
+      __syncingImages: false,
+      __syncWarning: false,
+    });
+
+    if (result.warning) {
+      toast.error(result.warning);
+    } else {
+      toast.success('Las fotos quedaron guardadas dentro de la tienda.');
+    }
+  }
+
   async function syncImagesInBackground(productId, manualUrls, files, productName) {
     if (!files.length) return;
 
     if (!storage) {
-      patchLocalProduct(productId, {
-        __syncingImages: false,
-        __syncWarning: true,
-      });
-      toast.error('El producto ya quedo guardado, pero Firebase Storage no esta configurado para subir las fotos.');
+      try {
+        await persistInlineFallbackImages(productId, manualUrls, files);
+      } catch (error) {
+        console.error('Inline image fallback error:', error);
+        patchLocalProduct(productId, {
+          __syncingImages: false,
+          __syncWarning: true,
+        });
+        toast.error('El producto se guardo, pero no pudimos conservar las fotos.');
+      }
       return;
     }
 
@@ -411,11 +498,17 @@ export default function ManageProducts() {
       }
     } catch (error) {
       console.error('Background image sync error:', error);
-      patchLocalProduct(productId, {
-        __syncingImages: false,
-        __syncWarning: true,
-      });
-      toast.error(`El producto ya quedo guardado, pero las fotos no terminaron de subir. ${getUploadErrorMessage(error)}`);
+      try {
+        await persistInlineFallbackImages(productId, manualUrls, files);
+        toast.error(`Firebase Storage fallo, pero las fotos quedaron guardadas igual. ${getUploadErrorMessage(error)}`);
+      } catch (fallbackError) {
+        console.error('Inline image fallback error:', fallbackError);
+        patchLocalProduct(productId, {
+          __syncingImages: false,
+          __syncWarning: true,
+        });
+        toast.error(`El producto se guardo, pero las fotos no terminaron de subir. ${getUploadErrorMessage(error)}`);
+      }
     } finally {
       setUploadPct(0);
     }

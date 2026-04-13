@@ -235,9 +235,6 @@ export default function OrderDetail() {
             {pricing.delivery_adjusted_distance_km !== null && pricing.delivery_adjusted_distance_km !== undefined && (
               <SummaryRow label="Distancia" value={`${pricing.delivery_adjusted_distance_km.toLocaleString('es-PY')} km`} />
             )}
-            {pricing.delivery_factor !== null && pricing.delivery_factor !== undefined && (
-              <SummaryRow label="Factor delivery" value={String(pricing.delivery_factor)} />
-            )}
             {'shipping' in pricing && (
               <SummaryRow label="Envio" value={pricing.shipping === 0 ? 'GRATIS' : `Gs. ${(pricing.shipping || 0).toLocaleString('es-PY')}`} highlight={pricing.shipping === 0} />
             )}

@@ -213,12 +213,6 @@ export default function ProductCard({ product }) {
             </div>
           )}
 
-          {productImages.length > 1 && (
-            <div style={{ fontSize: 12, color: 'var(--txt-muted)', marginBottom: 8 }}>
-              Toca la tarjeta para ver las {productImages.length} fotos.
-            </div>
-          )}
-
           <button
             onClick={handleBuyNow}
             disabled={outOfStock}

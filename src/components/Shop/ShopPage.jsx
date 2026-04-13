@@ -66,7 +66,7 @@ export default function ShopPage() {
           </div>
           <h2 style={{ fontSize: 28, marginBottom: 6 }}>{storeConfig.slogan}</h2>
           <p style={{ fontSize: 14, opacity: 0.92, maxWidth: 620 }}>
-            Compra directo desde tu celular, registrate para activar descuento en el pago y recibe tu codigo de entrega automatico.
+            Compra directo desde tu celular, guarda tus datos y termina tu pedido mas rapido.
           </p>
         </div>
         <div className="hero-metrics">

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Minus, Plus, ShieldCheck, ShoppingBag, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react';
 import { useCart } from '../../contexts/CartContext';
 import { useAuth } from '../../contexts/AuthContext';
 import AuthModal from '../Auth/AuthModal';
@@ -83,10 +83,6 @@ export default function CartPage() {
                   {items.length} producto{items.length !== 1 ? 's' : ''} listos para pagar.
                 </p>
               </div>
-              <div className="highlight-chip">
-                <Sparkles size={14} />
-                Registrados: {storeConfig.discounts.memberPercent}% OFF en el total
-              </div>
             </div>
           </div>
 
@@ -163,9 +159,9 @@ export default function CartPage() {
                 value={
                   user
                     ? `- Gs. ${summary.discount.toLocaleString('es-PY')}`
-                    : 'Se activa al registrarte'
+                    : `Ahorra Gs. ${Math.round((summary.subtotal * storeConfig.discounts.memberPercent) / 100).toLocaleString('es-PY')}`
                 }
-                highlight={Boolean(user)}
+                highlight
               />
               <SummaryRow label="Delivery" value="Se calcula con Maps en checkout" />
             </div>
@@ -178,30 +174,6 @@ export default function CartPage() {
                 Gs. {summary.subtotalAfterDiscount.toLocaleString('es-PY')}
               </span>
             </div>
-
-            {!user && (
-              <div className="checkout-highlight-card" style={{ marginTop: '1rem' }}>
-                <ShieldCheck size={18} />
-                <div>
-                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Activa el descuento ahora</div>
-                  <div style={{ fontSize: 13 }}>
-                    Registrate y ahorra Gs. {Math.round((summary.subtotal * storeConfig.discounts.memberPercent) / 100).toLocaleString('es-PY')} en el total de este pedido.
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {user && summary.discount > 0 && (
-              <div className="checkout-highlight-card" style={{ marginTop: '1rem' }}>
-                <ShieldCheck size={18} />
-                <div>
-                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Descuento total aplicado</div>
-                  <div style={{ fontSize: 13 }}>
-                    Estas ahorrando Gs. {summary.discount.toLocaleString('es-PY')} en esta compra.
-                  </div>
-                </div>
-              </div>
-            )}
 
             <button onClick={handleCheckout} className="btn btn-primary btn-full btn-lg" style={{ marginTop: '1rem' }}>
               {user ? 'Ir al pago' : 'Ir al pago y activar descuento'}

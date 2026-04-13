@@ -6,8 +6,6 @@ import {
   Loader2,
   MapPin,
   Plus,
-  ShieldCheck,
-  Sparkles,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../lib/supabase';
@@ -318,62 +316,25 @@ export default function CheckoutPage() {
               <div>
                 <h1 style={{ fontSize: 24, marginBottom: 6 }}>Finalizar compra</h1>
                 <p style={{ fontSize: 14, color: 'var(--txt-muted)' }}>
-                  {hasDirectCheckout ? 'Compra directa activada.' : 'Revisa tus datos y confirma el pedido.'}
+                  {hasDirectCheckout ? 'Estas comprando directo este producto.' : 'Revisa tus datos y confirma el pedido.'}
                 </p>
-              </div>
-              <div className="highlight-chip">
-                <Sparkles size={14} />
-                Registrados: {summary.memberDiscountRate}% menos en el total
               </div>
             </div>
           </div>
 
           {!user ? (
-            <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div
-                style={{
-                  background: 'linear-gradient(135deg, var(--brand) 0%, var(--blue) 100%)',
-                  color: '#fff',
-                  borderRadius: 'var(--radius)',
-                  padding: '1rem',
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.85, marginBottom: 4 }}>
-                  DESCUENTO POR REGISTRO
-                </div>
-                <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.1, marginBottom: 6 }}>
-                  Registrate y paga {summary.memberDiscountRate}% menos
-                </div>
-                <div style={{ fontSize: 14, opacity: 0.92 }}>
-                  El descuento se aplica al total completo de la compra cuando tu cuenta esta activa.
-                </div>
-              </div>
-
-              <div className="checkout-auth-grid">
-                <div className="card" style={{ background: 'var(--bg)', borderStyle: 'dashed' }}>
-                  <h3 style={{ fontSize: 16, marginBottom: 8 }}>Tu cuenta acelera todo</h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14, color: 'var(--txt-muted)' }}>
-                    <div>Autocompletado de nombre y telefono.</div>
-                    <div>Descuento sobre el total de este pedido.</div>
-                    <div>Seguimiento con codigo de entrega.</div>
-                    <div>Historial de compras y reordenes mas rapidas.</div>
-                  </div>
-                </div>
-
-                <div className="card">
-                  <h3 style={{ fontSize: 16, marginBottom: 8 }}>Activa tu descuento ahora</h3>
-                  <p style={{ fontSize: 14, color: 'var(--txt-muted)', marginBottom: 16 }}>
-                    Si ya tienes cuenta, ingresa. Si no, registrate y el descuento total se aplicara al instante.
-                  </p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <button onClick={openRegister} className="btn btn-primary btn-full btn-lg">
-                      Registrarme y aplicar descuento
-                    </button>
-                    <button onClick={openLogin} className="btn btn-outline btn-full btn-lg">
-                      Ya tengo cuenta
-                    </button>
-                  </div>
-                </div>
+            <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <h2 style={{ fontSize: 18 }}>Ingresa para continuar</h2>
+              <p style={{ fontSize: 14, color: 'var(--txt-muted)' }}>
+                Si te registras ahora, este pedido se procesa con tu descuento y tus datos quedan guardados para la proxima compra.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <button onClick={openRegister} className="btn btn-primary btn-full btn-lg">
+                  Registrarme y continuar
+                </button>
+                <button onClick={openLogin} className="btn btn-outline btn-full btn-lg">
+                  Ya tengo cuenta
+                </button>
               </div>
             </div>
           ) : (
@@ -430,11 +391,6 @@ export default function CheckoutPage() {
                             {addr.phone}
                             {addr.reference ? ` - ${addr.reference}` : ''}
                           </div>
-                          {(addr.latitude !== null && addr.longitude !== null) && (
-                            <div style={{ fontSize: 12, color: 'var(--success)', fontWeight: 700, marginTop: 6 }}>
-                              Ubicacion de Maps cargada
-                            </div>
-                          )}
                         </div>
                       </button>
                     ))}
@@ -492,16 +448,12 @@ export default function CheckoutPage() {
                 value={
                   user
                     ? `- Gs. ${summary.discount.toLocaleString('es-PY')}`
-                    : 'Disponible al registrarte'
+                    : `Ahorra Gs. ${guestDiscountPreview.toLocaleString('es-PY')}`
                 }
-                highlight={Boolean(user)}
+                highlight
               />
               <SummaryRow
-                label={
-                  deliveryQuote.mode === 'distance' && deliveryQuote.adjustedDistanceKm !== null
-                    ? `Delivery (${deliveryQuote.adjustedDistanceKm.toFixed(1)} km)`
-                    : 'Delivery provisional'
-                }
+                label="Delivery"
                 value={summary.shipping === 0 ? 'GRATIS' : `Gs. ${summary.shipping.toLocaleString('es-PY')}`}
                 highlight={summary.shipping === 0}
               />
@@ -515,65 +467,6 @@ export default function CheckoutPage() {
                 Gs. {summary.total.toLocaleString('es-PY')}
               </span>
             </div>
-
-            {!user && (
-              <div className="checkout-highlight-card" style={{ marginTop: '1rem' }}>
-                <ShieldCheck size={18} />
-                <div>
-                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Tu descuento esta esperando</div>
-                  <div style={{ fontSize: 13 }}>
-                    Registrate ahora y ahorra Gs. {guestDiscountPreview.toLocaleString('es-PY')} en el total de esta compra.
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {user && summary.discount > 0 && (
-              <div className="checkout-highlight-card" style={{ marginTop: '1rem' }}>
-                <ShieldCheck size={18} />
-                <div>
-                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Descuento total aplicado</div>
-                  <div style={{ fontSize: 13 }}>
-                    Ya se descontaron Gs. {summary.discount.toLocaleString('es-PY')} del total de tu compra.
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div
-              className="checkout-highlight-card"
-              style={{
-                marginTop: '1rem',
-                background: deliveryQuote.mode === 'distance' || deliveryQuote.mode === 'free' ? '#EFF6FF' : '#FFFBEB',
-                color: deliveryQuote.mode === 'distance' || deliveryQuote.mode === 'free' ? '#1D4ED8' : '#92400E',
-              }}
-            >
-              <MapPin size={18} />
-              <div>
-                <div style={{ fontWeight: 700, marginBottom: 2 }}>
-                  {deliveryQuote.mode === 'distance' || deliveryQuote.mode === 'free'
-                    ? 'Delivery calculado'
-                    : 'Delivery provisional'}
-                </div>
-                <div style={{ fontSize: 13 }}>
-                  {deliveryQuote.mode === 'distance' || deliveryQuote.mode === 'free'
-                    ? `Factor ${deliveryQuote.factor} aplicado${deliveryRuleLabel ? ` para ${deliveryRuleLabel}` : ''}.`
-                    : 'Puedes cargar una ubicacion exacta en tu direccion para calcular el costo por distancia.'}
-                </div>
-              </div>
-            </div>
-
-            {user && (
-              <div className="checkout-highlight-card" style={{ marginTop: '1rem' }}>
-                <ShieldCheck size={18} />
-                <div>
-                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Codigo de entrega automatico</div>
-                  <div style={{ fontSize: 13 }}>
-                    Apenas confirmes, el sistema te genera un codigo corto de 2 digitos para validar la entrega.
-                  </div>
-                </div>
-              </div>
-            )}
 
             <div
               style={{
