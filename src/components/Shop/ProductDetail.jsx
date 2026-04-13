@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Minus, Package, Plus, ShieldCheck, ShoppingCart, Truck, Zap } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Minus, Package, Plus, ShieldCheck, ShoppingCart, Truck, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -84,6 +84,17 @@ export default function ProductDetail() {
     setQty(Math.max(1, Math.min(nextQty, product.stock)));
   }
 
+  function goToAdjacentImage(direction) {
+    if (productImages.length <= 1) return;
+
+    setActiveImageIndex((prev) => {
+      const next = prev + direction;
+      if (next < 0) return productImages.length - 1;
+      if (next >= productImages.length) return 0;
+      return next;
+    });
+  }
+
   function handleAdd() {
     if (outOfStock) return;
     addItem(product, qty);
@@ -154,6 +165,27 @@ export default function ProductDetail() {
               <span className="promo-pill" style={{ top: 16, right: 16, background: 'var(--danger)', color: '#fff' }}>
                 -{discount}% OFF
               </span>
+            )}
+
+            {productImages.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  className="product-photo-nav-btn product-photo-nav-left"
+                  onClick={() => goToAdjacentImage(-1)}
+                  aria-label="Foto anterior"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button
+                  type="button"
+                  className="product-photo-nav-btn product-photo-nav-right"
+                  onClick={() => goToAdjacentImage(1)}
+                  aria-label="Siguiente foto"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </>
             )}
           </div>
 

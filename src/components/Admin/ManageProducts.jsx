@@ -141,6 +141,7 @@ export default function ManageProducts() {
   const [imgPreviews, setImgPreviews] = useState([]);
   const [uploadPct, setUploadPct] = useState(0);
   const [imgError, setImgError] = useState('');
+  const [showUrlField, setShowUrlField] = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -229,6 +230,7 @@ export default function ManageProducts() {
     setImgPreviews([]);
     setImgError('');
     setUploadPct(0);
+    setShowUrlField(false);
     if (fileRef.current) fileRef.current.value = '';
   }
 
@@ -239,6 +241,7 @@ export default function ManageProducts() {
     setImgPreviews([]);
     setImgError('');
     setUploadPct(0);
+    setShowUrlField(false);
     if (fileRef.current) fileRef.current.value = '';
     setModal('add');
   }
@@ -258,6 +261,7 @@ export default function ManageProducts() {
     setImgPreviews(existingImages);
     setImgError('');
     setUploadPct(0);
+    setShowUrlField(false);
     if (fileRef.current) fileRef.current.value = '';
     setModal('edit');
   }
@@ -1023,15 +1027,9 @@ export default function ManageProducts() {
               <div className="field">
                 <label>Fotos del producto</label>
                 <div
-                  onClick={() => fileRef.current?.click()}
                   style={{
-                    minHeight: 140,
                     border: '2px dashed var(--border)',
                     borderRadius: 'var(--radius)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
                     background: 'var(--bg)',
                     overflow: 'hidden',
                     padding: 12,
@@ -1040,6 +1038,7 @@ export default function ManageProducts() {
                   {imgPreviews.length ? (
                     <div style={{ width: '100%' }}>
                       <div
+                        className="admin-image-preview-grid"
                         style={{
                           display: 'grid',
                           gridTemplateColumns: 'repeat(auto-fit, minmax(88px, 1fr))',
@@ -1070,36 +1069,49 @@ export default function ManageProducts() {
                       </div>
                     </div>
                   ) : (
-                    <div style={{ textAlign: 'center', color: 'var(--txt-muted)' }}>
+                    <div style={{ textAlign: 'center', color: 'var(--txt-muted)', padding: '0.75rem 0.5rem' }}>
                       <ImagePlus size={28} style={{ marginBottom: 8 }} />
-                      <div style={{ fontSize: 13 }}>Click para subir una o varias fotos</div>
+                      <div style={{ fontSize: 13 }}>Sube una o varias fotos del producto</div>
                       <div style={{ fontSize: 12, marginTop: 4 }}>Hasta {MAX_PRODUCT_IMAGES} imagenes, 3 MB cada una</div>
                     </div>
                   )}
                 </div>
                 <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleImgChange} />
 
-                {imgFiles.length > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+                <div className="admin-image-toolbar" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                  <button type="button" className="btn btn-primary btn-sm" onClick={() => fileRef.current?.click()}>
+                    <ImagePlus size={14} />
+                    {imgPreviews.length ? 'Agregar mas fotos' : 'Agregar fotos'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => setShowUrlField((prev) => !prev)}
+                  >
+                    {showUrlField ? 'Ocultar URLs' : 'Usar URLs'}
+                  </button>
+                  {imgFiles.length > 0 && (
                     <button type="button" className="btn btn-outline btn-sm" onClick={clearPendingFiles}>
                       Quitar fotos nuevas
                     </button>
+                  )}
+                </div>
+
+                {showUrlField && (
+                  <div className="field" style={{ marginTop: 10 }}>
+                    <label>URLs de fotos opcionales</label>
+                    <textarea
+                      className="input"
+                      rows={2}
+                      value={form.image_urls_text}
+                      onChange={(event) => setField('image_urls_text', event.target.value)}
+                      placeholder={'https://...\nhttps://...'}
+                    />
+                    <small>
+                      Una URL por linea. Puedes mezclar URLs con fotos subidas.
+                    </small>
                   </div>
                 )}
-
-                <div className="field" style={{ marginTop: 10 }}>
-                  <label>URLs de fotos opcionales</label>
-                  <textarea
-                    className="input"
-                    rows={4}
-                    value={form.image_urls_text}
-                    onChange={(event) => setField('image_urls_text', event.target.value)}
-                    placeholder={'https://...\nhttps://...\nUna URL por linea'}
-                  />
-                  <small>
-                    Puedes mezclar archivos y URLs publicas. El producto se guarda rapido y las fotos se sincronizan en segundo plano.
-                  </small>
-                </div>
 
                 {uploadPct > 0 && uploadPct < 100 && (
                   <div style={{ marginTop: 4 }}>

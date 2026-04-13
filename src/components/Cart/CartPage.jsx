@@ -114,7 +114,7 @@ export default function CartPage() {
                 </div>
 
                 <div className="cart-item-actions">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div className="cart-item-qty-row" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <button type="button" className="qty-btn" onClick={() => setQty(item.id, item.qty - 1)}>
                       <Minus size={12} />
                     </button>
@@ -129,7 +129,7 @@ export default function CartPage() {
                     </button>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div className="cart-item-price-row" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <span style={{ fontWeight: 700, color: 'var(--brand)', fontFamily: "'Space Grotesk', sans-serif" }}>
                       Gs. {(item.price * item.qty).toLocaleString('es-PY')}
                     </span>
