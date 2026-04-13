@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, ChevronDown, ChevronUp, MapPin, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Crosshair, Loader2, MapPin, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { createAddressDraft, validateAddressForm } from '../../lib/addresses';
 import { parseCoordinatesFromMapInput } from '../../lib/delivery';
+import OpenStreetMapPicker from './OpenStreetMapPicker';
 
 export default function AddressModal({
   title = 'Guardar direccion',
@@ -20,11 +21,16 @@ export default function AddressModal({
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [showLocationFields, setShowLocationFields] = useState(Boolean(initialValues?.maps_link));
+  const [detectingLocation, setDetectingLocation] = useState(false);
+  const [locationError, setLocationError] = useState('');
+  const [showMapPicker, setShowMapPicker] = useState(false);
 
   useEffect(() => {
     setForm(createAddressDraft(initialValues));
     setErrors({});
     setShowLocationFields(Boolean(initialValues?.maps_link));
+    setLocationError('');
+    setShowMapPicker(Boolean(initialValues?.maps_link));
   }, [initialValues]);
 
   const parsedLocation = useMemo(
@@ -35,6 +41,43 @@ export default function AddressModal({
   function setField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => ({ ...prev, [key]: '' }));
+    if (key === 'maps_link') {
+      setLocationError('');
+    }
+  }
+
+  function handleUseCurrentLocation() {
+    if (!navigator.geolocation) {
+      setLocationError('Tu navegador no permite usar la ubicacion del telefono.');
+      return;
+    }
+
+    setDetectingLocation(true);
+    setLocationError('');
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const nextValue = `${position.coords.latitude},${position.coords.longitude}`;
+        setField('maps_link', nextValue);
+        setDetectingLocation(false);
+        toast.success('Ubicacion exacta cargada desde tu telefono');
+      },
+      (error) => {
+        const messages = {
+          1: 'Necesitamos permiso para leer la ubicacion del telefono.',
+          2: 'No se pudo obtener tu ubicacion actual.',
+          3: 'La ubicacion tardo demasiado. Intenta otra vez.',
+        };
+
+        setDetectingLocation(false);
+        setLocationError(messages[error.code] || 'No se pudo leer la ubicacion exacta.');
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 0,
+      }
+    );
   }
 
   async function handleSubmit(event) {
@@ -186,21 +229,73 @@ export default function AddressModal({
               </button>
 
               {showLocationFields && (
-                <div style={{ marginTop: '0.85rem' }}>
+                <div style={{ marginTop: '0.85rem', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div className="location-action-grid">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-full"
+                      onClick={handleUseCurrentLocation}
+                      disabled={detectingLocation}
+                    >
+                      {detectingLocation ? (
+                        <>
+                          <Loader2 size={16} style={{ animation: 'spin .7s linear infinite' }} />
+                          Leyendo ubicacion...
+                        </>
+                      ) : (
+                        <>
+                          <Crosshair size={16} />
+                          Usar mi ubicacion actual
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-full"
+                      onClick={() => setShowMapPicker((prev) => !prev)}
+                    >
+                      <MapPin size={16} />
+                      {showMapPicker ? 'Ocultar mapa' : 'Marcar en el mapa'}
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      borderRadius: 10,
+                      padding: '10px 12px',
+                      background: parsedLocation ? '#EFF6FF' : '#F8FAFC',
+                      color: parsedLocation ? '#1D4ED8' : 'var(--txt-muted)',
+                      fontSize: 13,
+                    }}
+                  >
+                    {parsedLocation
+                      ? 'La ubicacion exacta ya quedo cargada. Puedes guardar la direccion asi.'
+                      : 'Si quieres, tambien puedes pegar un link compartido o las coordenadas manualmente.'}
+                  </div>
+
+                  {showMapPicker && (
+                    <OpenStreetMapPicker
+                      value={form.maps_link}
+                      onChange={(nextValue) => setField('maps_link', nextValue)}
+                    />
+                  )}
+
                   <div className="field">
-                    <label>Ubicacion de Google Maps</label>
+                    <label>Ubicacion exacta</label>
                     <input
                       className={`input ${form.maps_link && !parsedLocation ? 'error' : ''}`}
                       value={form.maps_link}
                       onChange={(event) => setField('maps_link', event.target.value)}
                       autoComplete="off"
-                      placeholder="Pega el link compartido o lat,lng"
+                      placeholder="Se puede completar sola con el GPS o pegar un link"
                     />
                     <small>
                       {parsedLocation
                         ? `Coordenadas detectadas: ${parsedLocation.lat.toFixed(6)}, ${parsedLocation.lng.toFixed(6)}`
                         : 'Es opcional. Sirve para calcular delivery exacto por distancia.'}
                     </small>
+                    {locationError && <span className="error-msg">{locationError}</span>}
                   </div>
                 </div>
               )}
