@@ -19,6 +19,8 @@ const ORDER_FILTERS = [
   { value: 'todos', label: 'Todos' },
 ];
 
+const STOCK_COMMITTED_STATUSES = new Set(['confirmado', 'preparando', 'en_camino', 'entregado']);
+
 export default function ManageOrders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -51,36 +53,154 @@ export default function ManageOrders() {
     setOrderItems(data || []);
   }
 
+  async function syncStockForStatusChange(order, newStatus) {
+    const wasCommitted = STOCK_COMMITTED_STATUSES.has(order.status);
+    const willBeCommitted = STOCK_COMMITTED_STATUSES.has(newStatus);
+
+    if (wasCommitted === willBeCommitted) {
+      return null;
+    }
+
+    const { data: items, error: itemsError } = await supabase
+      .from('order_items')
+      .select('product_id, quantity, product_snapshot')
+      .eq('order_id', order.id);
+
+    if (itemsError) throw itemsError;
+
+    const validItems = (items || []).filter((item) => item.product_id);
+    if (!validItems.length) return;
+
+    const quantitiesByProduct = new Map();
+    for (const item of validItems) {
+      const currentQty = quantitiesByProduct.get(item.product_id) || 0;
+      quantitiesByProduct.set(item.product_id, currentQty + (Number(item.quantity) || 0));
+    }
+
+    const productIds = [...quantitiesByProduct.keys()];
+    const { data: products, error: productsError } = await supabase
+      .from('products')
+      .select('id, name, stock')
+      .in('id', productIds);
+
+    if (productsError) throw productsError;
+
+    const productsById = new Map((products || []).map((product) => [product.id, product]));
+    const adjustments = [];
+
+    for (const [productId, quantity] of quantitiesByProduct.entries()) {
+      const product = productsById.get(productId);
+      const fallbackItem = validItems.find((item) => item.product_id === productId);
+      const productName = fallbackItem?.product_snapshot?.name || product?.name || 'Producto';
+
+      if (!product) {
+        throw new Error(`No se encontro el producto "${productName}" para actualizar stock.`);
+      }
+
+      if (quantity <= 0) continue;
+
+      const nextStock = willBeCommitted
+        ? product.stock - quantity
+        : product.stock + quantity;
+
+      if (willBeCommitted && nextStock < 0) {
+        throw new Error(`No hay stock suficiente para confirmar "${productName}".`);
+      }
+
+      adjustments.push({
+        productId,
+        previousStock: product.stock,
+        nextStock,
+      });
+    }
+
+    const appliedAdjustments = [];
+
+    try {
+      for (const adjustment of adjustments) {
+        const { error: updateError } = await supabase
+          .from('products')
+          .update({ stock: adjustment.nextStock })
+          .eq('id', adjustment.productId);
+
+        if (updateError) throw updateError;
+        appliedAdjustments.push(adjustment);
+      }
+    } catch (error) {
+      for (const adjustment of appliedAdjustments.reverse()) {
+        await supabase
+          .from('products')
+          .update({ stock: adjustment.previousStock })
+          .eq('id', adjustment.productId);
+      }
+      throw error;
+    }
+
+    return async function undoStockSync() {
+      for (const adjustment of adjustments) {
+        await supabase
+          .from('products')
+          .update({ stock: adjustment.previousStock })
+          .eq('id', adjustment.productId);
+      }
+    };
+  }
+
   async function updateStatus(orderId, newStatus, adminNote = '') {
     setUpdating(true);
 
-    const { error } = await supabase
-      .from('orders')
-      .update({ status: newStatus, admin_notes: adminNote })
-      .eq('id', orderId);
-
-    if (error) {
-      toast.error('No se pudo actualizar el pedido');
+    const currentOrder = orders.find((order) => order.id === orderId) || selected;
+    if (!currentOrder) {
+      toast.error('No se encontro el pedido');
       setUpdating(false);
       return;
     }
 
-    setOrders((prev) =>
-      prev.map((order) =>
-        order.id === orderId
-          ? { ...order, status: newStatus, admin_notes: adminNote }
-          : order
-      )
-    );
+    if (currentOrder.status === newStatus && currentOrder.admin_notes === adminNote) {
+      setUpdating(false);
+      return;
+    }
 
-    setSelected((prev) =>
-      prev?.id === orderId
-        ? { ...prev, status: newStatus, admin_notes: adminNote }
-        : prev
-    );
+    let undoStockSync = null;
 
-    toast.success(`Estado actualizado a ${STATUS_OPTIONS.find((item) => item.value === newStatus)?.label}`);
-    setUpdating(false);
+    try {
+      undoStockSync = await syncStockForStatusChange(currentOrder, newStatus);
+
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: newStatus, admin_notes: adminNote })
+        .eq('id', orderId);
+
+      if (error) throw error;
+
+      setOrders((prev) =>
+        prev.map((order) =>
+          order.id === orderId
+            ? { ...order, status: newStatus, admin_notes: adminNote }
+            : order
+        )
+      );
+
+      setSelected((prev) =>
+        prev?.id === orderId
+          ? { ...prev, status: newStatus, admin_notes: adminNote }
+          : prev
+      );
+
+      toast.success(`Estado actualizado a ${STATUS_OPTIONS.find((item) => item.value === newStatus)?.label}`);
+    } catch (error) {
+      if (undoStockSync) {
+        try {
+          await undoStockSync();
+        } catch (rollbackError) {
+          console.error('No se pudo revertir el stock tras un fallo de estado', rollbackError);
+        }
+      }
+      console.error(error);
+      toast.error(error?.message || 'No se pudo actualizar el pedido');
+    } finally {
+      setUpdating(false);
+    }
   }
 
   async function deleteOrder(order) {
@@ -300,6 +420,17 @@ export default function ManageOrders() {
                   ))}
                 </div>
               </div>
+
+              {(selected.address_snapshot?.pricing?.delivery_adjusted_distance_km !== null && selected.address_snapshot?.pricing?.delivery_adjusted_distance_km !== undefined) && (
+                <div className="field">
+                  <label>Calculo de delivery</label>
+                  <div className="card" style={{ background: 'var(--bg)', padding: '0.875rem', lineHeight: 1.8 }}>
+                    <div>Distancia: <strong>{selected.address_snapshot.pricing.delivery_adjusted_distance_km} km</strong></div>
+                    <div>Factor: <strong>{selected.address_snapshot.pricing.delivery_factor}</strong></div>
+                    <div>Envio: <strong>{selected.address_snapshot.pricing.shipping === 0 ? 'GRATIS' : `Gs. ${selected.address_snapshot.pricing.shipping.toLocaleString('es-PY')}`}</strong></div>
+                  </div>
+                </div>
+              )}
 
               <div className="field">
                 <label>Nota interna</label>

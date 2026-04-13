@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Package, ShieldCheck, ShoppingCart, Truck, Zap } from 'lucide-react';
+import { ArrowLeft, Minus, Package, Plus, ShieldCheck, ShoppingCart, Truck, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCart } from '../../contexts/CartContext';
 import { getCategoryLabel, storeConfig } from '../../config/store';
-import { getMemberPrice } from '../../lib/commerce';
 
 const EMOJI_MAP = {
   1: 'Cel',
@@ -25,6 +24,7 @@ export default function ProductDetail() {
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [qty, setQty] = useState(1);
 
   useEffect(() => {
     supabase
@@ -37,6 +37,11 @@ export default function ProductDetail() {
         setLoading(false);
       });
   }, [id]);
+
+  useEffect(() => {
+    if (!product) return;
+    setQty((prev) => Math.max(1, Math.min(prev, product.stock || 1)));
+  }, [product]);
 
   if (loading) {
     return <div className="page-loading"><div className="spinner" /></div>;
@@ -61,18 +66,22 @@ export default function ProductDetail() {
     : null;
   const outOfStock = product.stock <= 0;
   const inCart = items.find((item) => item.id === product.id);
-  const memberPrice = getMemberPrice(product.price, storeConfig);
+
+  function changeQty(nextQty) {
+    if (outOfStock) return;
+    setQty(Math.max(1, Math.min(nextQty, product.stock)));
+  }
 
   function handleAdd() {
     if (outOfStock) return;
-    addItem(product);
-    toast.success('Agregado al carrito');
+    addItem(product, qty);
+    toast.success(`Agregado x${qty} al carrito`);
   }
 
   function handleBuyNow() {
     if (outOfStock) return;
 
-    startDirectCheckout(product);
+    startDirectCheckout(product, qty);
 
     if (!user) {
       toast.success('Continua al pago y activa tu descuento registrandote');
@@ -160,10 +169,12 @@ export default function ProductDetail() {
               )}
             </div>
             <div style={{ marginTop: 8, fontSize: 14, color: 'var(--success)', fontWeight: 700 }}>
-              Con cuenta pagas Gs. {memberPrice.toLocaleString('es-PY')}
+              Descuento del {storeConfig.discounts.memberPercent}% sobre el total del pedido
             </div>
             <div style={{ marginTop: 4, fontSize: 13, color: 'var(--txt-muted)' }}>
-              Registrate y el descuento se aplica al pagar.
+              {user
+                ? 'Tu ahorro se descuenta del total final al pagar.'
+                : 'Registrate y el descuento se aplica al total al momento de pagar.'}
             </div>
           </div>
 
@@ -181,15 +192,56 @@ export default function ProductDetail() {
             {outOfStock ? 'Sin stock' : `Stock disponible: ${product.stock}`}
           </div>
 
+          <div
+            className="card"
+            style={{
+              background: 'var(--bg)',
+              padding: '1rem',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 14,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>Cantidad a comprar</div>
+              <div style={{ fontSize: 12, color: 'var(--txt-muted)' }}>
+                Ajusta con menos o mas antes de agregar o comprar.
+              </div>
+            </div>
+            <div className="quantity-stepper">
+              <button
+                type="button"
+                className="qty-btn"
+                onClick={() => changeQty(qty - 1)}
+                disabled={outOfStock || qty <= 1}
+                aria-label="Disminuir cantidad"
+              >
+                <Minus size={12} />
+              </button>
+              <span className="qty-value">{qty}</span>
+              <button
+                type="button"
+                className="qty-btn"
+                onClick={() => changeQty(qty + 1)}
+                disabled={outOfStock || qty >= product.stock}
+                aria-label="Aumentar cantidad"
+              >
+                <Plus size={12} />
+              </button>
+            </div>
+          </div>
+
           <div className="detail-action-grid">
             <button onClick={handleAdd} disabled={outOfStock} className="btn btn-blue btn-lg btn-full">
               <ShoppingCart size={18} />
-              {outOfStock ? 'Sin stock' : inCart ? `Agregar otro (${inCart.qty} en carrito)` : 'Agregar al carrito'}
+              {outOfStock ? 'Sin stock' : inCart ? `Agregar x${qty} (${inCart.qty} en carrito)` : `Agregar x${qty}`}
             </button>
 
             <button onClick={handleBuyNow} disabled={outOfStock} className="btn btn-primary btn-lg btn-full">
               <Zap size={18} />
-              Comprar ahora
+              Comprar x{qty}
             </button>
           </div>
 
@@ -200,7 +252,7 @@ export default function ProductDetail() {
           <div className="card" style={{ padding: 0 }}>
             {[
               { icon: <Truck size={16} />, title: 'Entrega local', desc: storeConfig.city },
-              { icon: <ShieldCheck size={16} />, title: 'Beneficio por cuenta', desc: `${storeConfig.discounts.memberPercent}% OFF para clientes registrados` },
+              { icon: <ShieldCheck size={16} />, title: 'Beneficio por cuenta', desc: `${storeConfig.discounts.memberPercent}% OFF sobre el total para clientes registrados` },
               { icon: 'Pago', title: 'Formas de pago', desc: `${storeConfig.payments.primary} o ${storeConfig.payments.secondary}` },
             ].map((item, index) => (
               <div

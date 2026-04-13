@@ -14,11 +14,13 @@ export function getShippingCost(subtotalAfterDiscount, storeConfig) {
   return subtotalAfterDiscount >= freeFrom ? 0 : shippingCost;
 }
 
-export function buildCheckoutSummary(items, isRegistered, storeConfig) {
+export function buildCheckoutSummary(items, isRegistered, storeConfig, options = {}) {
   const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0);
   const discount = getMemberDiscountAmount(subtotal, isRegistered, storeConfig);
   const subtotalAfterDiscount = Math.max(subtotal - discount, 0);
-  const shipping = getShippingCost(subtotalAfterDiscount, storeConfig);
+  const shipping = typeof options.shippingOverride === 'number'
+    ? options.shippingOverride
+    : getShippingCost(subtotalAfterDiscount, storeConfig);
   const total = subtotalAfterDiscount + shipping;
 
   return {
@@ -31,12 +33,6 @@ export function buildCheckoutSummary(items, isRegistered, storeConfig) {
   };
 }
 
-export function getMemberPrice(price, storeConfig) {
-  const rate = getMemberDiscountRate(storeConfig);
-  if (!rate) return price;
-  return Math.max(price - Math.round((price * rate) / 100), 0);
-}
-
 export function generateDeliveryCode() {
-  return String(Math.floor(100000 + Math.random() * 900000));
+  return String(Math.floor(Math.random() * 100)).padStart(2, '0');
 }

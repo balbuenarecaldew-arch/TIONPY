@@ -580,6 +580,73 @@ select.input {
   justify-content: center;
 }
 
+.quantity-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qty-value {
+  min-width: 24px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--txt);
+}
+
+.product-card-cart-box {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.product-card-cart-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+
+.product-card-cart-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.product-card-cart-qty {
+  min-width: 20px;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--txt);
+}
+
+.product-card-cart-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.product-card-cart-price {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--brand);
+}
+
+.product-card-remove-btn {
+  border: none;
+  background: transparent;
+  color: var(--danger);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+
 .checkout-auth-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

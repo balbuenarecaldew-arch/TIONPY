@@ -7,15 +7,24 @@ const STORAGE_KEY = 'tionpy_cart';
 function cartReducer(state, action) {
   switch (action.type) {
     case 'ADD': {
+      const requestedQty = Math.max(1, Number(action.qty) || 1);
+      const availableStock = Number(action.product.stock);
+      const maxStock = Number.isFinite(availableStock) && availableStock > 0
+        ? availableStock
+        : requestedQty;
+      const nextQty = Math.min(requestedQty, maxStock);
+
+      if (nextQty <= 0) return state;
+
       const existing = state.find(i => i.id === action.product.id);
       if (existing) {
         return state.map(i =>
           i.id === action.product.id
-            ? { ...i, qty: Math.min(i.qty + 1, action.product.stock) }
+            ? { ...i, qty: Math.min(i.qty + nextQty, maxStock) }
             : i
         );
       }
-      return [...state, { ...action.product, qty: 1 }];
+      return [...state, { ...action.product, qty: nextQty }];
     }
     case 'REMOVE':
       return state.filter(i => i.id !== action.id);
@@ -23,7 +32,18 @@ function cartReducer(state, action) {
       if (action.qty <= 0) return state.filter(i => i.id !== action.id);
       return state.map(i =>
         i.id === action.id
-          ? { ...i, qty: Math.min(action.qty, i.stock) }
+          ? {
+              ...i,
+              qty: Math.max(
+                1,
+                Math.min(
+                  action.qty,
+                  Number.isFinite(Number(i.stock)) && Number(i.stock) > 0
+                    ? Number(i.stock)
+                    : action.qty
+                )
+              ),
+            }
           : i
       );
     case 'CLEAR':
@@ -59,12 +79,16 @@ export function CartProvider({ children }) {
   const checkoutTotal = checkoutItems.reduce((sum, i) => sum + i.price * i.qty, 0);
   const hasDirectCheckout = Boolean(directCheckoutItems?.length);
 
-  function addItem(product)        { dispatch({ type: 'ADD',     product }); }
+  function addItem(product, qty = 1) { dispatch({ type: 'ADD', product, qty }); }
   function removeItem(id)          { dispatch({ type: 'REMOVE',  id }); }
   function setQty(id, qty)         { dispatch({ type: 'SET_QTY', id, qty }); }
   function clearCart()             { dispatch({ type: 'CLEAR' }); setDirectCheckoutItems(null); }
   function startDirectCheckout(product, qty = 1) {
-    const safeQty = Math.max(1, Math.min(qty, product.stock || qty));
+    const availableStock = Number(product.stock);
+    const maxStock = Number.isFinite(availableStock) && availableStock > 0
+      ? availableStock
+      : qty;
+    const safeQty = Math.max(1, Math.min(qty, maxStock));
     setDirectCheckoutItems([{ ...product, qty: safeQty }]);
   }
   function clearDirectCheckout() {

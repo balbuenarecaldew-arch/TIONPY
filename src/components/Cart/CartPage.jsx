@@ -15,7 +15,7 @@ export default function CartPage() {
   const { items, removeItem, setQty, clearDirectCheckout } = useCart();
   const [authOpen, setAuthOpen] = useState(false);
 
-  const summary = buildCheckoutSummary(items, Boolean(user), storeConfig);
+  const summary = buildCheckoutSummary(items, Boolean(user), storeConfig, { shippingOverride: 0 });
 
   useEffect(() => {
     clearDirectCheckout();
@@ -85,7 +85,7 @@ export default function CartPage() {
               </div>
               <div className="highlight-chip">
                 <Sparkles size={14} />
-                Registrados: {storeConfig.discounts.memberPercent}% OFF
+                Registrados: {storeConfig.discounts.memberPercent}% OFF en el total
               </div>
             </div>
           </div>
@@ -112,11 +112,9 @@ export default function CartPage() {
                   <div style={{ fontSize: 15, fontWeight: 600, margin: '4px 0 8px', lineHeight: 1.4 }}>
                     {item.name}
                   </div>
-                  {!user && (
-                    <div style={{ fontSize: 12, color: 'var(--success)', fontWeight: 600 }}>
-                      Con cuenta: Gs. {Math.max(item.price - Math.round((item.price * storeConfig.discounts.memberPercent) / 100), 0).toLocaleString('es-PY')}
-                    </div>
-                  )}
+                  <div style={{ fontSize: 12, color: 'var(--success)', fontWeight: 600 }}>
+                    El descuento se calcula sobre el total del pedido.
+                  </div>
                 </div>
 
                 <div className="cart-item-actions">
@@ -161,7 +159,7 @@ export default function CartPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14 }}>
               <SummaryRow label="Subtotal" value={`Gs. ${summary.subtotal.toLocaleString('es-PY')}`} />
               <SummaryRow
-                label={`Descuento por registro (${storeConfig.discounts.memberPercent}%)`}
+                label={`Descuento total por registro (${storeConfig.discounts.memberPercent}%)`}
                 value={
                   user
                     ? `- Gs. ${summary.discount.toLocaleString('es-PY')}`
@@ -169,19 +167,15 @@ export default function CartPage() {
                 }
                 highlight={Boolean(user)}
               />
-              <SummaryRow
-                label="Envio"
-                value={summary.shipping === 0 ? 'GRATIS' : `Gs. ${summary.shipping.toLocaleString('es-PY')}`}
-                highlight={summary.shipping === 0}
-              />
+              <SummaryRow label="Delivery" value="Se calcula con Maps en checkout" />
             </div>
 
             <div className="divider" />
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <span style={{ fontWeight: 700 }}>Total</span>
+              <span style={{ fontWeight: 700 }}>Total sin delivery</span>
               <span style={{ fontSize: 24, fontWeight: 700, color: 'var(--brand)', fontFamily: "'Space Grotesk', sans-serif" }}>
-                Gs. {summary.total.toLocaleString('es-PY')}
+                Gs. {summary.subtotalAfterDiscount.toLocaleString('es-PY')}
               </span>
             </div>
 
@@ -191,7 +185,19 @@ export default function CartPage() {
                 <div>
                   <div style={{ fontWeight: 700, marginBottom: 2 }}>Activa el descuento ahora</div>
                   <div style={{ fontSize: 13 }}>
-                    Registrate y ahorra Gs. {Math.round((summary.subtotal * storeConfig.discounts.memberPercent) / 100).toLocaleString('es-PY')} en este pedido.
+                    Registrate y ahorra Gs. {Math.round((summary.subtotal * storeConfig.discounts.memberPercent) / 100).toLocaleString('es-PY')} en el total de este pedido.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {user && summary.discount > 0 && (
+              <div className="checkout-highlight-card" style={{ marginTop: '1rem' }}>
+                <ShieldCheck size={18} />
+                <div>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Descuento total aplicado</div>
+                  <div style={{ fontSize: 13 }}>
+                    Estas ahorrando Gs. {summary.discount.toLocaleString('es-PY')} en esta compra.
                   </div>
                 </div>
               </div>

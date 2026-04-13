@@ -1,10 +1,9 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, ShoppingCart, Zap } from 'lucide-react';
+import { Eye, Minus, Plus, ShoppingCart, Trash2, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useCart } from '../../contexts/CartContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { getMemberPrice } from '../../lib/commerce';
 import { storeConfig } from '../../config/store';
 
 const EMOJI_MAP = { 1: 'Cel', 2: 'Aud', 3: 'Game', 4: 'Acc', 5: 'Home', 6: 'PC' };
@@ -12,18 +11,19 @@ const EMOJI_MAP = { 1: 'Cel', 2: 'Aud', 3: 'Game', 4: 'Acc', 5: 'Home', 6: 'PC' 
 export default function ProductCard({ product }) {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { addItem, startDirectCheckout } = useCart();
+  const { addItem, items, removeItem, setQty, startDirectCheckout } = useCart();
 
   const discount = product.old_price
     ? Math.round((1 - product.price / product.old_price) * 100)
     : null;
   const outOfStock = product.stock <= 0;
-  const memberPrice = getMemberPrice(product.price, storeConfig);
+  const inCart = items.find((item) => item.id === product.id);
+  const lineTotal = inCart ? inCart.price * inCart.qty : product.price;
 
   function handleAdd(event) {
     event.preventDefault();
     if (outOfStock) return;
-    addItem(product);
+    addItem(product, 1);
     toast.success(`${product.name} agregado al carrito`);
   }
 
@@ -31,7 +31,7 @@ export default function ProductCard({ product }) {
     event.preventDefault();
     if (outOfStock) return;
 
-    startDirectCheckout(product);
+    startDirectCheckout(product, inCart?.qty || 1);
 
     if (!user) {
       toast.success('Continua al pago y activa tu descuento registrandote');
@@ -138,11 +138,20 @@ export default function ProductCard({ product }) {
             </div>
 
             <div style={{ fontSize: 12, color: 'var(--success)', fontWeight: 600 }}>
-              Registrado pagas Gs. {memberPrice.toLocaleString('es-PY')}
+              {user
+                ? `Tu descuento se calcula sobre el total al pagar.`
+                : `Registrate y ahorra ${storeConfig.discounts.memberPercent}% sobre el total del pedido.`}
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '36px 1fr', gap: 8, marginBottom: 8 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: inCart ? '1fr' : '36px 1fr',
+              gap: 8,
+              marginBottom: 8,
+            }}
+          >
             <Link
               to={`/producto/${product.id}`}
               style={{
@@ -153,22 +162,74 @@ export default function ProductCard({ product }) {
                 border: '1.5px solid var(--border)',
                 color: 'var(--txt-muted)',
                 textDecoration: 'none',
+                minHeight: 40,
               }}
               title="Ver detalle"
             >
               <Eye size={16} />
+              {inCart && <span style={{ marginLeft: 6, fontSize: 13, fontWeight: 600 }}>Ver detalle</span>}
             </Link>
 
-            <button
-              onClick={handleAdd}
-              disabled={outOfStock}
-              className="btn btn-blue"
-              style={{ width: '100%', justifyContent: 'center' }}
-            >
-              <ShoppingCart size={14} />
-              {outOfStock ? 'Sin stock' : 'Agregar'}
-            </button>
+            {!inCart && (
+              <button
+                onClick={handleAdd}
+                disabled={outOfStock}
+                className="btn btn-blue"
+                style={{ width: '100%', justifyContent: 'center' }}
+              >
+                <ShoppingCart size={14} />
+                {outOfStock ? 'Sin stock' : 'Agregar'}
+              </button>
+            )}
           </div>
+
+          {inCart && (
+            <div className="product-card-cart-box">
+              <div className="product-card-cart-stepper">
+                <button
+                  type="button"
+                  className="qty-btn product-card-cart-btn"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setQty(product.id, inCart.qty - 1);
+                  }}
+                  aria-label="Disminuir cantidad"
+                >
+                  <Minus size={12} />
+                </button>
+                <span className="product-card-cart-qty">{inCart.qty}</span>
+                <button
+                  type="button"
+                  className="qty-btn product-card-cart-btn"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setQty(product.id, inCart.qty + 1);
+                  }}
+                  disabled={inCart.qty >= product.stock}
+                  aria-label="Aumentar cantidad"
+                >
+                  <Plus size={12} />
+                </button>
+              </div>
+
+              <div className="product-card-cart-summary">
+                <span className="product-card-cart-price">
+                  Gs. {lineTotal.toLocaleString('es-PY')}
+                </span>
+                <button
+                  type="button"
+                  className="product-card-remove-btn"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    removeItem(product.id);
+                  }}
+                  title="Quitar del carrito"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+          )}
 
           <button
             onClick={handleBuyNow}

@@ -230,7 +230,13 @@ export default function OrderDetail() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14 }}>
             <SummaryRow label="Subtotal" value={`Gs. ${(pricing.subtotal || order.total).toLocaleString('es-PY')}`} />
             {'discount' in pricing && (
-              <SummaryRow label="Descuento" value={`- Gs. ${(pricing.discount || 0).toLocaleString('es-PY')}`} highlight={(pricing.discount || 0) > 0} />
+              <SummaryRow label="Descuento total" value={`- Gs. ${(pricing.discount || 0).toLocaleString('es-PY')}`} highlight={(pricing.discount || 0) > 0} />
+            )}
+            {pricing.delivery_adjusted_distance_km !== null && pricing.delivery_adjusted_distance_km !== undefined && (
+              <SummaryRow label="Distancia" value={`${pricing.delivery_adjusted_distance_km.toLocaleString('es-PY')} km`} />
+            )}
+            {pricing.delivery_factor !== null && pricing.delivery_factor !== undefined && (
+              <SummaryRow label="Factor delivery" value={String(pricing.delivery_factor)} />
             )}
             {'shipping' in pricing && (
               <SummaryRow label="Envio" value={pricing.shipping === 0 ? 'GRATIS' : `Gs. ${(pricing.shipping || 0).toLocaleString('es-PY')}`} highlight={pricing.shipping === 0} />

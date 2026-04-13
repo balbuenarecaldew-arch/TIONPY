@@ -62,7 +62,7 @@ export default function ShopPage() {
         <div>
           <div className="highlight-chip" style={{ marginBottom: 10, display: 'inline-flex' }}>
             <Sparkles size={14} />
-            Clientes registrados ahorran {storeConfig.discounts.memberPercent}%
+            Clientes registrados ahorran {storeConfig.discounts.memberPercent}% en el total
           </div>
           <h2 style={{ fontSize: 28, marginBottom: 6 }}>{storeConfig.slogan}</h2>
           <p style={{ fontSize: 14, opacity: 0.92, maxWidth: 620 }}>
@@ -76,7 +76,7 @@ export default function ShopPage() {
           </div>
           <div className="hero-metric-card">
             <strong>{storeConfig.discounts.memberPercent}%</strong>
-            <span>off con cuenta</span>
+            <span>off en el total</span>
           </div>
         </div>
       </div>

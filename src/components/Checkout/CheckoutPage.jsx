@@ -17,6 +17,8 @@ import { useCart } from '../../contexts/CartContext';
 import AuthModal from '../Auth/AuthModal';
 import { storeConfig } from '../../config/store';
 import { buildCheckoutSummary, generateDeliveryCode } from '../../lib/commerce';
+import { calculateDeliveryQuote, formatFactorRange, parseCoordinatesFromMapInput } from '../../lib/delivery';
+import { fetchDeliverySettings } from '../../lib/storeSettings';
 
 const EMPTY_ADDRESS = {
   label: 'Casa',
@@ -26,6 +28,7 @@ const EMPTY_ADDRESS = {
   neighborhood: '',
   city: storeConfig.city,
   reference: '',
+  maps_link: '',
 };
 
 export default function CheckoutPage() {
@@ -48,12 +51,50 @@ export default function CheckoutPage() {
   const [authMode, setAuthMode] = useState('register');
   const [addrErrors, setAddrErrors] = useState({});
   const [addrForm, setAddrForm] = useState(EMPTY_ADDRESS);
+  const [deliverySettings, setDeliverySettings] = useState(null);
 
-  const summary = useMemo(
-    () => buildCheckoutSummary(checkoutItems, Boolean(user), storeConfig),
+  const pricingBase = useMemo(
+    () => buildCheckoutSummary(checkoutItems, Boolean(user), storeConfig, { shippingOverride: 0 }),
     [checkoutItems, user]
   );
-  const guestDiscountPreview = Math.round((summary.subtotal * summary.memberDiscountRate) / 100);
+  const deliveryQuote = useMemo(
+    () =>
+      calculateDeliveryQuote({
+        subtotalAfterDiscount: pricingBase.subtotalAfterDiscount,
+        destinationLat: selectedAddr?.latitude,
+        destinationLng: selectedAddr?.longitude,
+        settings: deliverySettings,
+        fallbackCost: storeConfig.shipping.cost,
+      }),
+    [pricingBase.subtotalAfterDiscount, selectedAddr?.latitude, selectedAddr?.longitude, deliverySettings]
+  );
+  const summary = useMemo(
+    () => buildCheckoutSummary(checkoutItems, Boolean(user), storeConfig, { shippingOverride: deliveryQuote.shipping }),
+    [checkoutItems, user, deliveryQuote.shipping]
+  );
+  const guestDiscountPreview = Math.round((pricingBase.subtotal * pricingBase.memberDiscountRate) / 100);
+  const parsedAddressLocation = useMemo(
+    () => parseCoordinatesFromMapInput(addrForm.maps_link),
+    [addrForm.maps_link]
+  );
+  const deliveryRuleLabel = deliveryQuote.factorRule ? formatFactorRange(deliveryQuote.factorRule) : '';
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDeliverySettings() {
+      const settings = await fetchDeliverySettings();
+      if (!cancelled) {
+        setDeliverySettings(settings);
+      }
+    }
+
+    loadDeliverySettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -128,6 +169,15 @@ export default function CheckoutPage() {
     if (!validateAddress()) return;
 
     const isFirstAddress = addresses.length === 0;
+    const parsedLocation = addrForm.maps_link.trim()
+      ? parseCoordinatesFromMapInput(addrForm.maps_link)
+      : null;
+
+    if (addrForm.maps_link.trim() && !parsedLocation) {
+      toast.error('No se pudo leer la ubicacion de Google Maps');
+      return;
+    }
+
     const payload = {
       ...addrForm,
       firebase_uid: user.uid,
@@ -137,6 +187,9 @@ export default function CheckoutPage() {
       neighborhood: addrForm.neighborhood.trim(),
       city: addrForm.city.trim(),
       reference: addrForm.reference.trim(),
+      maps_link: addrForm.maps_link.trim(),
+      latitude: parsedLocation?.lat ?? null,
+      longitude: parsedLocation?.lng ?? null,
       is_default: isFirstAddress,
     };
 
@@ -204,6 +257,11 @@ export default function CheckoutPage() {
         shipping: summary.shipping,
         total: summary.total,
         member_discount_rate: summary.memberDiscountRate,
+        delivery_mode: deliveryQuote.mode,
+        delivery_factor: deliveryQuote.factor,
+        delivery_rule_label: deliveryRuleLabel,
+        delivery_distance_km: deliveryQuote.distanceKm ? Number(deliveryQuote.distanceKm.toFixed(2)) : null,
+        delivery_adjusted_distance_km: deliveryQuote.adjustedDistanceKm ? Number(deliveryQuote.adjustedDistanceKm.toFixed(2)) : null,
       };
 
       const { data: order, error: orderError } = await supabase
@@ -221,6 +279,9 @@ export default function CheckoutPage() {
             city: selectedAddr.city,
             reference: selectedAddr.reference,
             delivery_code: deliveryCode,
+            maps_link: selectedAddr.maps_link || '',
+            latitude: selectedAddr.latitude ?? null,
+            longitude: selectedAddr.longitude ?? null,
             pricing: orderPricing,
           },
           total: summary.total,
@@ -251,17 +312,6 @@ export default function CheckoutPage() {
 
       if (itemsError) throw itemsError;
 
-      for (const item of checkoutItems) {
-        const product = byId.get(item.id);
-        const nextStock = Math.max(product.stock - item.qty, 0);
-        const { error: stockError } = await supabase
-          .from('products')
-          .update({ stock: nextStock })
-          .eq('id', item.id);
-
-        if (stockError) throw stockError;
-      }
-
       await supabase.from('order_status_history').insert({
         order_id: order.id,
         status: 'pendiente',
@@ -274,7 +324,7 @@ export default function CheckoutPage() {
         clearCart();
       }
 
-      toast.success(`Pedido confirmado. Tu codigo de entrega es ${deliveryCode}`);
+      toast.success(`Pedido recibido. Tu codigo de entrega es ${deliveryCode}`);
       navigate(`/mis-pedidos/${order.id}`);
     } catch (error) {
       console.error(error);
@@ -347,7 +397,7 @@ export default function CheckoutPage() {
               </div>
               <div className="highlight-chip">
                 <Sparkles size={14} />
-                Registrados: {summary.memberDiscountRate}% OFF
+                Registrados: {summary.memberDiscountRate}% menos en el total
               </div>
             </div>
           </div>
@@ -369,7 +419,7 @@ export default function CheckoutPage() {
                   Registrate y paga {summary.memberDiscountRate}% menos
                 </div>
                 <div style={{ fontSize: 14, opacity: 0.92 }}>
-                  El descuento se aplica recien al momento de pagar cuando tu cuenta esta activa.
+                  El descuento se aplica al total completo de la compra cuando tu cuenta esta activa.
                 </div>
               </div>
 
@@ -378,7 +428,7 @@ export default function CheckoutPage() {
                   <h3 style={{ fontSize: 16, marginBottom: 8 }}>Tu cuenta acelera todo</h3>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14, color: 'var(--txt-muted)' }}>
                     <div>Autocompletado de nombre y telefono.</div>
-                    <div>Descuento especial en este pedido.</div>
+                    <div>Descuento sobre el total de este pedido.</div>
                     <div>Seguimiento con codigo de entrega.</div>
                     <div>Historial de compras y reordenes mas rapidas.</div>
                   </div>
@@ -387,7 +437,7 @@ export default function CheckoutPage() {
                 <div className="card">
                   <h3 style={{ fontSize: 16, marginBottom: 8 }}>Activa tu descuento ahora</h3>
                   <p style={{ fontSize: 14, color: 'var(--txt-muted)', marginBottom: 16 }}>
-                    Si ya tienes cuenta, ingresa. Si no, registrate y el descuento se aplicara al total al instante.
+                    Si ya tienes cuenta, ingresa. Si no, registrate y el descuento total se aplicara al instante.
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <button onClick={openRegister} className="btn btn-primary btn-full btn-lg">
@@ -454,6 +504,11 @@ export default function CheckoutPage() {
                             {addr.phone}
                             {addr.reference ? ` - ${addr.reference}` : ''}
                           </div>
+                          {(addr.latitude !== null && addr.longitude !== null) && (
+                            <div style={{ fontSize: 12, color: 'var(--success)', fontWeight: 700, marginTop: 6 }}>
+                              Ubicacion de Maps cargada
+                            </div>
+                          )}
                         </div>
                       </button>
                     ))}
@@ -550,6 +605,22 @@ export default function CheckoutPage() {
                               placeholder="Casa azul, frente a la plaza..."
                             />
                           </div>
+
+                          <div className="field full-span">
+                            <label>Ubicacion de Google Maps</label>
+                            <input
+                              className="input"
+                              value={addrForm.maps_link}
+                              onChange={(event) => setAddrField('maps_link', event.target.value)}
+                              autoComplete="off"
+                              placeholder="Pega el link compartido de Google Maps o lat,lng"
+                            />
+                            <small>
+                              {parsedAddressLocation
+                                ? `Coordenadas detectadas: ${parsedAddressLocation.lat.toFixed(6)}, ${parsedAddressLocation.lng.toFixed(6)}`
+                                : 'Esto permite calcular el delivery segun la distancia real.'}
+                            </small>
+                          </div>
                         </div>
 
                         <button onClick={saveAddress} className="btn btn-primary btn-full" style={{ marginTop: '1rem' }}>
@@ -598,7 +669,7 @@ export default function CheckoutPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14 }}>
               <SummaryRow label="Subtotal" value={`Gs. ${summary.subtotal.toLocaleString('es-PY')}`} />
               <SummaryRow
-                label={`${storeConfig.discounts.memberLabel} (${summary.memberDiscountRate}%)`}
+                label={`Descuento total por registro (${summary.memberDiscountRate}%)`}
                 value={
                   user
                     ? `- Gs. ${summary.discount.toLocaleString('es-PY')}`
@@ -607,7 +678,11 @@ export default function CheckoutPage() {
                 highlight={Boolean(user)}
               />
               <SummaryRow
-                label="Envio"
+                label={
+                  deliveryQuote.mode === 'distance' && deliveryQuote.adjustedDistanceKm !== null
+                    ? `Delivery (${deliveryQuote.adjustedDistanceKm.toFixed(1)} km)`
+                    : 'Delivery provisional'
+                }
                 value={summary.shipping === 0 ? 'GRATIS' : `Gs. ${summary.shipping.toLocaleString('es-PY')}`}
                 highlight={summary.shipping === 0}
               />
@@ -628,11 +703,46 @@ export default function CheckoutPage() {
                 <div>
                   <div style={{ fontWeight: 700, marginBottom: 2 }}>Tu descuento esta esperando</div>
                   <div style={{ fontSize: 13 }}>
-                    Registrate ahora y ahorra Gs. {guestDiscountPreview.toLocaleString('es-PY')}.
+                    Registrate ahora y ahorra Gs. {guestDiscountPreview.toLocaleString('es-PY')} en el total de esta compra.
                   </div>
                 </div>
               </div>
             )}
+
+            {user && summary.discount > 0 && (
+              <div className="checkout-highlight-card" style={{ marginTop: '1rem' }}>
+                <ShieldCheck size={18} />
+                <div>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Descuento total aplicado</div>
+                  <div style={{ fontSize: 13 }}>
+                    Ya se descontaron Gs. {summary.discount.toLocaleString('es-PY')} del total de tu compra.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div
+              className="checkout-highlight-card"
+              style={{
+                marginTop: '1rem',
+                background: deliveryQuote.mode === 'distance' || deliveryQuote.mode === 'free' ? '#EFF6FF' : '#FFFBEB',
+                color: deliveryQuote.mode === 'distance' || deliveryQuote.mode === 'free' ? '#1D4ED8' : '#92400E',
+              }}
+            >
+              <MapPin size={18} />
+              <div>
+                <div style={{ fontWeight: 700, marginBottom: 2 }}>
+                  {deliveryQuote.mode === 'distance' || deliveryQuote.mode === 'free'
+                    ? 'Delivery calculado'
+                    : 'Delivery provisional'}
+                </div>
+                <div style={{ fontSize: 13 }}>
+                  {deliveryQuote.mode === 'distance' || deliveryQuote.mode === 'free'
+                    ? `Factor ${deliveryQuote.factor} aplicado${deliveryRuleLabel ? ` para ${deliveryRuleLabel}` : ''}.`
+                    : 'Pega la ubicacion de Google Maps de la direccion para calcular el costo exacto por distancia.'}
+                </div>
+              </div>
+            </div>
 
             {user && (
               <div className="checkout-highlight-card" style={{ marginTop: '1rem' }}>
@@ -640,7 +750,7 @@ export default function CheckoutPage() {
                 <div>
                   <div style={{ fontWeight: 700, marginBottom: 2 }}>Codigo de entrega automatico</div>
                   <div style={{ fontSize: 13 }}>
-                    Apenas confirmes, el sistema te genera un codigo para validar la entrega con el cliente.
+                    Apenas confirmes, el sistema te genera un codigo corto de 2 digitos para validar la entrega.
                   </div>
                 </div>
               </div>
