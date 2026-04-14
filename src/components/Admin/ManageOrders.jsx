@@ -1,7 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Eye, Loader2, Trash2, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Eye, Loader2, MessageCircle, Trash2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../lib/supabase';
+import { DEFAULT_PAYMENT_SETTINGS, fetchPaymentSettings } from '../../lib/storeSettings';
+import { shareOrderPaymentRequest } from '../../lib/orderShare';
 
 const STATUS_OPTIONS = [
   { value: 'pendiente', label: 'Pendiente' },
@@ -21,36 +23,103 @@ const ORDER_FILTERS = [
 
 const STOCK_COMMITTED_STATUSES = new Set(['confirmado', 'preparando', 'en_camino', 'entregado']);
 
+function normalizeWhatsappPhone(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '';
+
+  if (digits.startsWith('595')) return digits;
+  if (digits.startsWith('0')) return `595${digits.slice(1)}`;
+  if (digits.length === 9) return `595${digits}`;
+  return digits;
+}
+
+function canUseNativeShare() {
+  return Boolean(
+    typeof navigator !== 'undefined' &&
+    typeof navigator.share === 'function' &&
+    typeof navigator.canShare === 'function'
+  );
+}
+
 export default function ManageOrders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [orderItems, setOrderItems] = useState([]);
+  const [itemsByOrderId, setItemsByOrderId] = useState({});
+  const [paymentSettings, setPaymentSettings] = useState(DEFAULT_PAYMENT_SETTINGS);
   const [filter, setFilter] = useState('activos');
   const [updating, setUpdating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [sharingOrderId, setSharingOrderId] = useState(null);
 
   useEffect(() => {
-    fetchOrders();
+    loadPage();
   }, []);
 
-  async function fetchOrders() {
-    const { data } = await supabase
-      .from('orders')
-      .select('*')
-      .order('created_at', { ascending: false });
+  async function loadPage() {
+    setLoading(true);
 
-    setOrders(data || []);
-    setLoading(false);
+    try {
+      const [ordersResult, payment] = await Promise.all([
+        supabase
+          .from('orders')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        fetchPaymentSettings(),
+      ]);
+
+      if (ordersResult.error) {
+        throw ordersResult.error;
+      }
+
+      setOrders(ordersResult.data || []);
+      setPaymentSettings(payment);
+    } catch (error) {
+      console.error(error);
+      toast.error('No se pudieron cargar los pedidos');
+    } finally {
+      setLoading(false);
+    }
   }
+
+  const loadOrderItems = useCallback(async (orderId, options = {}) => {
+    const { force = false } = options;
+
+    if (!force && itemsByOrderId[orderId]) {
+      return itemsByOrderId[orderId];
+    }
+
+    const { data, error } = await supabase
+      .from('order_items')
+      .select('*')
+      .eq('order_id', orderId)
+      .order('id', { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    const nextItems = data || [];
+    setItemsByOrderId((prev) => ({
+      ...prev,
+      [orderId]: nextItems,
+    }));
+
+    return nextItems;
+  }, [itemsByOrderId]);
 
   async function openDetail(order) {
     setSelected(order);
-    const { data } = await supabase
-      .from('order_items')
-      .select('*')
-      .eq('order_id', order.id);
-    setOrderItems(data || []);
+
+    try {
+      const items = await loadOrderItems(order.id);
+      setOrderItems(items);
+    } catch (error) {
+      console.error(error);
+      toast.error('No se pudieron cargar los productos del pedido');
+      setOrderItems([]);
+    }
   }
 
   async function syncStockForStatusChange(order, newStatus) {
@@ -61,15 +130,9 @@ export default function ManageOrders() {
       return null;
     }
 
-    const { data: items, error: itemsError } = await supabase
-      .from('order_items')
-      .select('product_id, quantity, product_snapshot')
-      .eq('order_id', order.id);
-
-    if (itemsError) throw itemsError;
-
+    const items = await loadOrderItems(order.id, { force: true });
     const validItems = (items || []).filter((item) => item.product_id);
-    if (!validItems.length) return;
+    if (!validItems.length) return null;
 
     const quantitiesByProduct = new Map();
     for (const item of validItems) {
@@ -196,6 +259,7 @@ export default function ManageOrders() {
           console.error('No se pudo revertir el stock tras un fallo de estado', rollbackError);
         }
       }
+
       console.error(error);
       toast.error(error?.message || 'No se pudo actualizar el pedido');
     } finally {
@@ -229,6 +293,56 @@ export default function ManageOrders() {
     setDeleting(false);
   }
 
+  async function openWhatsapp(order) {
+    const phone = normalizeWhatsappPhone(order?.address_snapshot?.phone);
+
+    if (!phone) {
+      toast.error('Este pedido no tiene un telefono valido para WhatsApp');
+      return;
+    }
+
+    const popupWindow = canUseNativeShare()
+      ? null
+      : window.open('', '_blank');
+
+    setSharingOrderId(order.id);
+
+    try {
+      const items = await loadOrderItems(order.id);
+      if (selected?.id === order.id) {
+        setOrderItems(items);
+      }
+
+      const result = await shareOrderPaymentRequest({
+        order,
+        items,
+        phone,
+        paymentSettings,
+        popupWindow,
+      });
+
+      if (result.method === 'share') {
+        toast.success('Resumen listo para compartir por WhatsApp');
+      } else {
+        toast.success('Abrimos WhatsApp y bajamos el resumen para adjuntarlo');
+      }
+    } catch (error) {
+      if (popupWindow && !popupWindow.closed) {
+        popupWindow.close();
+      }
+
+      if (error?.name === 'AbortError') {
+        toast('Se cancelo el compartir');
+        return;
+      }
+
+      console.error(error);
+      toast.error(error?.message || 'No se pudo preparar el mensaje de cobro');
+    } finally {
+      setSharingOrderId(null);
+    }
+  }
+
   const filtered = useMemo(() => {
     if (filter === 'entregados') return orders.filter((order) => order.status === 'entregado');
     if (filter === 'cancelados') return orders.filter((order) => order.status === 'cancelado');
@@ -236,7 +350,9 @@ export default function ManageOrders() {
     return orders.filter((order) => !['entregado', 'cancelado'].includes(order.status));
   }, [filter, orders]);
 
-  if (loading) return <div className="page-loading"><div className="spinner" /></div>;
+  if (loading) {
+    return <div className="page-loading"><div className="spinner" /></div>;
+  }
 
   return (
     <div>
@@ -271,6 +387,7 @@ export default function ManageOrders() {
           filtered.map((order) => {
             const deliveryCode = order.address_snapshot?.delivery_code;
             const canDelete = order.status === 'entregado' || order.status === 'cancelado';
+            const isSharing = sharingOrderId === order.id;
 
             return (
               <div key={order.id} className="card">
@@ -287,6 +404,11 @@ export default function ManageOrders() {
                     </div>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>{order.customer_name}</div>
                     <div style={{ fontSize: 13, color: 'var(--txt-muted)' }}>{order.customer_email}</div>
+                    {order.address_snapshot?.phone && (
+                      <div style={{ fontSize: 13, color: 'var(--txt-muted)', marginTop: 2 }}>
+                        {order.address_snapshot.phone}
+                      </div>
+                    )}
                     <div style={{ fontSize: 13, color: 'var(--txt-muted)', marginTop: 4 }}>
                       {new Date(order.created_at).toLocaleDateString('es-PY', {
                         day: '2-digit',
@@ -298,7 +420,7 @@ export default function ManageOrders() {
 
                   <div className="admin-order-side">
                     <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18, color: 'var(--brand)' }}>
-                      Gs. {order.total.toLocaleString('es-PY')}
+                      Gs. {Number(order.total || 0).toLocaleString('es-PY')}
                     </div>
 
                     <select
@@ -316,6 +438,10 @@ export default function ManageOrders() {
                     </select>
 
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <button onClick={() => openWhatsapp(order)} className="btn btn-outline btn-sm" disabled={isSharing}>
+                        {isSharing ? <Loader2 size={14} style={{ animation: 'spin .7s linear infinite' }} /> : <MessageCircle size={14} />}
+                        Cobrar por WhatsApp
+                      </button>
                       <button onClick={() => openDetail(order)} className="btn btn-outline btn-sm">
                         <Eye size={14} />
                         Ver detalle
@@ -361,6 +487,11 @@ export default function ManageOrders() {
                   <div className="card" style={{ padding: '0.875rem', background: 'var(--bg)' }}>
                     <strong>{selected.customer_name}</strong>
                     <div style={{ fontSize: 13, color: 'var(--txt-muted)' }}>{selected.customer_email}</div>
+                    {selected.address_snapshot?.phone && (
+                      <div style={{ fontSize: 13, color: 'var(--txt-muted)', marginTop: 4 }}>
+                        {selected.address_snapshot.phone}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -379,6 +510,22 @@ export default function ManageOrders() {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => openWhatsapp(selected)}
+                  className="btn btn-primary"
+                  disabled={sharingOrderId === selected.id}
+                >
+                  {sharingOrderId === selected.id ? (
+                    <Loader2 size={16} style={{ animation: 'spin .7s linear infinite' }} />
+                  ) : (
+                    <MessageCircle size={16} />
+                  )}
+                  Cobrar por WhatsApp
+                </button>
               </div>
 
               <div className="field">
@@ -414,7 +561,7 @@ export default function ManageOrders() {
                         <div style={{ fontSize: 13, color: 'var(--txt-muted)' }}>Cantidad: {item.quantity}</div>
                       </div>
                       <div style={{ fontWeight: 700, color: 'var(--brand)' }}>
-                        Gs. {(item.unit_price * item.quantity).toLocaleString('es-PY')}
+                        Gs. {(Number(item.unit_price || 0) * Number(item.quantity || 0)).toLocaleString('es-PY')}
                       </div>
                     </div>
                   ))}
@@ -423,10 +570,9 @@ export default function ManageOrders() {
 
               {(selected.address_snapshot?.pricing?.delivery_adjusted_distance_km !== null && selected.address_snapshot?.pricing?.delivery_adjusted_distance_km !== undefined) && (
                 <div className="field">
-                  <label>Calculo de delivery</label>
+                  <label>Delivery</label>
                   <div className="card" style={{ background: 'var(--bg)', padding: '0.875rem', lineHeight: 1.8 }}>
                     <div>Distancia: <strong>{selected.address_snapshot.pricing.delivery_adjusted_distance_km} km</strong></div>
-                    <div>Factor: <strong>{selected.address_snapshot.pricing.delivery_factor}</strong></div>
                     <div>Envio: <strong>{selected.address_snapshot.pricing.shipping === 0 ? 'GRATIS' : `Gs. ${selected.address_snapshot.pricing.shipping.toLocaleString('es-PY')}`}</strong></div>
                   </div>
                 </div>

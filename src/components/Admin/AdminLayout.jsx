@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, LogOut, Package, ShoppingBag, Truck } from 'lucide-react';
+import { Landmark, LayoutDashboard, LogOut, Package, ShoppingBag, Truck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -9,6 +9,7 @@ const NAV = [
   { to: '/admin/productos', icon: Package, label: 'Productos' },
   { to: '/admin/pedidos', icon: ShoppingBag, label: 'Pedidos' },
   { to: '/admin/delivery', icon: Truck, label: 'Delivery' },
+  { to: '/admin/cobros', icon: Landmark, label: 'Cobros' },
 ];
 
 export default function AdminLayout() {

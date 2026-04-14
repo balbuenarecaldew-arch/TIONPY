@@ -15,6 +15,7 @@ import ManageProducts from './components/Admin/ManageProducts';
 import ManageOrders from './components/Admin/ManageOrders';
 import AdminDashboard from './components/Admin/AdminDashboard';
 import ManageDelivery from './components/Admin/ManageDelivery';
+import ManagePayments from './components/Admin/ManagePayments';
 import SetupRequired from './components/System/SetupRequired';
 
 function RequireAuth({ children }) {
@@ -55,6 +56,7 @@ export default function App() {
             <Route path="productos" element={<ManageProducts />} />
             <Route path="pedidos" element={<ManageOrders />} />
             <Route path="delivery" element={<ManageDelivery />} />
+            <Route path="cobros" element={<ManagePayments />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
