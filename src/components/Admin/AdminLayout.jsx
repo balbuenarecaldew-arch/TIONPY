@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 
 const NAV = [
-  { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
+  { to: '/admin', icon: LayoutDashboard, label: 'Operacion', end: true },
   { to: '/admin/productos', icon: Package, label: 'Productos' },
   { to: '/admin/pedidos', icon: ShoppingBag, label: 'Pedidos' },
   { to: '/admin/delivery', icon: Truck, label: 'Delivery' },
@@ -27,7 +27,7 @@ export default function AdminLayout() {
       <aside className="admin-sidebar">
         <div style={{ padding: '0 1.25rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,.1)' }}>
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, opacity: 0.55 }}>
-            Panel admin
+            Centro de control
           </div>
         </div>
 

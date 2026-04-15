@@ -6,6 +6,7 @@ import {
   Plus,
   Save,
   Search,
+  Sparkles,
   Tag,
   Trash2,
   X,
@@ -15,6 +16,8 @@ import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from 'firebas
 import { storage } from '../../lib/firebase';
 import { supabase } from '../../lib/supabase';
 import { getCategoryLabel } from '../../config/store';
+import { getCategoryMeta, hasLegacyCatalog, sortCategoriesForStore } from '../../config/catalog';
+import { seedNightStoreCatalog } from '../../lib/catalogMigration';
 import { getPrimaryProductImage, getProductImages, mergeUniqueImageUrls, parseImageUrlText } from '../../lib/productImages';
 
 const EMPTY = {
@@ -133,6 +136,7 @@ export default function ManageProducts() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
+  const [catalogLoading, setCatalogLoading] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkPercent, setBulkPercent] = useState('10');
   const [bulkScope, setBulkScope] = useState('filtered');
@@ -189,12 +193,36 @@ export default function ManageProducts() {
   async function load() {
     const [{ data: productData }, { data: categoryData }] = await Promise.all([
       supabase.from('products').select('*, categories(name, slug)').order('created_at', { ascending: false }),
-      supabase.from('categories').select('*').order('name'),
+      supabase.from('categories').select('*'),
     ]);
 
     setProducts(productData || []);
-    setCategories(categoryData || []);
+    setCategories(sortCategoriesForStore(categoryData || []));
     setLoading(false);
+  }
+
+  async function handleSeedCatalog() {
+    const confirmed = window.confirm(
+      'Esto reemplazara el catalogo actual por categorias y productos de bodega nocturna. Los pedidos existentes no se tocan. Quieres continuar?'
+    );
+    if (!confirmed) return;
+
+    setCatalogLoading(true);
+
+    try {
+      const result = await seedNightStoreCatalog();
+      setProducts(result.products || []);
+      setCategories(sortCategoriesForStore(result.categories || []));
+      setFilter('active');
+      setSearch('');
+      setCategoryFilter('');
+      toast.success('Catalogo nocturno cargado en Supabase');
+    } catch (error) {
+      console.error(error);
+      toast.error(error?.message || 'No se pudo cargar el catalogo nocturno');
+    } finally {
+      setCatalogLoading(false);
+    }
   }
 
   const filteredProducts = useMemo(() => {
@@ -221,6 +249,7 @@ export default function ManageProducts() {
 
   const activeCount = products.filter((product) => product.is_active).length;
   const discountedCount = products.filter((product) => product.old_price && product.old_price > product.price).length;
+  const hasLegacyData = useMemo(() => hasLegacyCatalog(categories, products), [categories, products]);
 
   function closeModal() {
     releaseBlobPreviews(imgPreviews);
@@ -776,13 +805,33 @@ export default function ManageProducts() {
         <div>
           <h1 style={{ fontSize: 24, marginBottom: 4 }}>Productos</h1>
           <p style={{ fontSize: 14, color: 'var(--txt-muted)' }}>
-            {filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''} en vista.
+            {filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''} en vista para la bodega.
           </p>
         </div>
         <button onClick={openAdd} className="btn btn-primary">
           <Plus size={16} />
           Agregar producto
         </button>
+      </div>
+
+      <div className="card" style={{ marginBottom: '1rem', borderColor: hasLegacyData ? '#FCD34D' : '#FED7AA', background: hasLegacyData ? '#FFF7ED' : '#FFF9F5' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ maxWidth: 720 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <Sparkles size={18} style={{ color: '#C2410C' }} />
+              <strong>Migracion de catalogo nocturno</strong>
+            </div>
+            <p style={{ fontSize: 14, color: '#7C2D12' }}>
+              Carga categorias y productos base de bodega nocturna en Supabase sin tocar usuarios, pedidos ni roles.
+              {hasLegacyData ? ' Detectamos rastros del catalogo viejo de electronica.' : ' Puedes usarlo para relanzar el catalogo cuando quieras.'}
+            </p>
+          </div>
+
+          <button type="button" onClick={handleSeedCatalog} className="btn btn-primary" disabled={catalogLoading}>
+            {catalogLoading ? <Loader2 size={16} style={{ animation: 'spin .7s linear infinite' }} /> : <Sparkles size={16} />}
+            Cargar catalogo nocturno
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: '1rem' }}>
@@ -803,7 +852,7 @@ export default function ManageProducts() {
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '1rem' }}>
           <Tag size={18} style={{ color: 'var(--brand)' }} />
-          <h2 style={{ fontSize: 17 }}>Campana de descuentos</h2>
+          <h2 style={{ fontSize: 17 }}>Promos nocturnas</h2>
         </div>
 
         <div className="responsive-form-grid">
@@ -838,7 +887,7 @@ export default function ManageProducts() {
                 <option value="">Selecciona una categoria</option>
                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>
-                    {category.emoji} {category.name}
+                    {category.name}
                   </option>
                 ))}
               </select>
@@ -876,7 +925,7 @@ export default function ManageProducts() {
             className="input"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar por nombre o marca..."
+            placeholder="Buscar por producto, combo o marca..."
             style={{ paddingLeft: 38 }}
           />
         </div>
@@ -884,7 +933,7 @@ export default function ManageProducts() {
           <option value="">Todas las categorias</option>
           {categories.map((category) => (
             <option key={category.id} value={category.id}>
-              {category.emoji} {category.name}
+              {category.name}
             </option>
           ))}
         </select>
@@ -917,7 +966,7 @@ export default function ManageProducts() {
                 style={{
                   height: 160,
                   borderRadius: 'var(--radius)',
-                  background: '#F3F4F6',
+                  background: primaryImage ? '#F3F4F6' : getCategoryMeta(product.categories)?.gradient || 'linear-gradient(135deg, #1F2937 0%, #9A3412 100%)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -930,7 +979,11 @@ export default function ManageProducts() {
                 {primaryImage ? (
                   <img src={primaryImage} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  'Sin imagen'
+                  <div className="product-media-fallback" style={{ minHeight: 0, height: '100%' }}>
+                    <span className="product-media-tag">{getCategoryMeta(product.categories)?.badge || 'CAT'}</span>
+                    <strong>{product.name}</strong>
+                    <span>{getCategoryMeta(product.categories)?.shortLabel || 'sin foto'}</span>
+                  </div>
                 )}
 
                 {percentOff && (
@@ -944,7 +997,7 @@ export default function ManageProducts() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
                   <div>
                     <div style={{ fontWeight: 700, marginBottom: 2 }}>{product.name}</div>
-                    <div style={{ fontSize: 13, color: 'var(--txt-muted)' }}>{product.brand || 'Sin marca'}</div>
+                    <div style={{ fontSize: 13, color: 'var(--txt-muted)' }}>{product.brand || 'Marca libre'}</div>
                   </div>
                   <span className={`badge ${product.is_active ? 'badge-success' : 'badge-gray'}`}>
                     {product.is_active ? 'Visible' : 'Archivado'}
@@ -1138,8 +1191,8 @@ export default function ManageProducts() {
                 </div>
 
                 <div className="field">
-                  <label>Marca</label>
-                  <input className="input" value={form.brand} onChange={(event) => setField('brand', event.target.value)} />
+                  <label>Marca / referencia</label>
+                  <input className="input" value={form.brand} onChange={(event) => setField('brand', event.target.value)} placeholder="Ej: Pilsen, Monster, Generico" />
                 </div>
 
                 <div className="field">
@@ -1148,7 +1201,7 @@ export default function ManageProducts() {
                     <option value="">Sin categoria</option>
                     {categories.map((category) => (
                       <option key={category.id} value={category.id}>
-                        {category.emoji} {category.name}
+                        {category.name}
                       </option>
                     ))}
                   </select>
@@ -1160,7 +1213,7 @@ export default function ManageProducts() {
                 </div>
 
                 <div className="field">
-                  <label>Precio tachado</label>
+                  <label>Precio anterior</label>
                   <input className="input" type="number" value={form.old_price} onChange={(event) => setField('old_price', event.target.value)} />
                 </div>
 
@@ -1178,7 +1231,7 @@ export default function ManageProducts() {
 
                 <div className="field full-span">
                   <label>Descripcion</label>
-                  <textarea className="input" rows={4} value={form.description} onChange={(event) => setField('description', event.target.value)} />
+                  <textarea className="input" rows={4} value={form.description} onChange={(event) => setField('description', event.target.value)} placeholder="Texto corto pensado para compra rapida desde el celular." />
                 </div>
               </div>
             </div>

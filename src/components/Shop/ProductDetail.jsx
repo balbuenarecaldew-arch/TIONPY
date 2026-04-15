@@ -1,21 +1,32 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ChevronLeft, ChevronRight, Minus, Package, Plus, ShieldCheck, ShoppingCart, Truck, Zap } from 'lucide-react';
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  MapPin,
+  Minus,
+  Package,
+  Plus,
+  ShieldCheck,
+  ShoppingCart,
+  Truck,
+  Zap,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCart } from '../../contexts/CartContext';
-import { getCategoryLabel, storeConfig } from '../../config/store';
+import { storeConfig } from '../../config/store';
+import {
+  getCategoryLabel,
+  getCategoryMeta,
+  getProductCategorySlug,
+  getProductNotices,
+  isComboProduct,
+} from '../../config/catalog';
 import { getProductImages } from '../../lib/productImages';
-
-const EMOJI_MAP = {
-  1: 'Cel',
-  2: 'Aud',
-  3: 'Game',
-  4: 'Acc',
-  5: 'Home',
-  6: 'PC',
-};
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -29,15 +40,22 @@ export default function ProductDetail() {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+
     supabase
       .from('products')
-      .select('*, categories(name, slug)')
+      .select('*, categories(name, slug, emoji)')
       .eq('id', id)
       .single()
       .then(({ data }) => {
+        if (cancelled) return;
         setProduct(data);
         setLoading(false);
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   useEffect(() => {
@@ -49,6 +67,11 @@ export default function ProductDetail() {
     () => getProductImages(product),
     [product]
   );
+
+  const categoryLabel = getCategoryLabel(product?.categories || getProductCategorySlug(product));
+  const categoryMeta = getCategoryMeta(product?.categories || getProductCategorySlug(product));
+  const notices = getProductNotices(product);
+  const isCombo = isComboProduct(product);
 
   useEffect(() => {
     setActiveImageIndex(0);
@@ -65,7 +88,7 @@ export default function ProductDetail() {
           <div className="icon">Item</div>
           <h3>Producto no encontrado</h3>
           <Link to="/" className="btn btn-primary" style={{ marginTop: '0.75rem' }}>
-            Volver a la tienda
+            Volver a la bodega
           </Link>
         </div>
       </div>
@@ -98,7 +121,7 @@ export default function ProductDetail() {
   function handleAdd() {
     if (outOfStock) return;
     addItem(product, qty);
-    toast.success(inCart ? `Carrito actualizado (+${qty})` : `Agregado x${qty} al carrito`);
+    toast.success(inCart ? `Tu pedido se actualizo (+${qty})` : `Agregado x${qty} a tu pedido`);
   }
 
   function handleBuyNow() {
@@ -107,7 +130,7 @@ export default function ProductDetail() {
     startDirectCheckout(product, qty);
 
     if (!user) {
-      toast.success('Continua al pago y activa tu descuento registrandote');
+      toast.success('Continua al checkout y guarda tus datos al confirmar');
     }
 
     navigate('/checkout');
@@ -128,20 +151,19 @@ export default function ProductDetail() {
         }}
       >
         <ArrowLeft size={16} />
-        Volver a la tienda
+        Volver a la bodega
       </Link>
 
       <div className="product-detail-grid">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div
             style={{
-              background: '#F3F4F6',
+              background: activeImage ? '#F3F4F6' : categoryMeta?.gradient || 'linear-gradient(135deg, #111827 0%, #9A3412 100%)',
               borderRadius: 'var(--radius-lg)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               minHeight: 320,
-              fontSize: 72,
               position: 'relative',
               overflow: 'hidden',
             }}
@@ -158,12 +180,22 @@ export default function ProductDetail() {
                 }}
               />
             ) : (
-              EMOJI_MAP[product.category_id] || 'Item'
+              <div className="product-media-fallback product-media-fallback-detail">
+                <span className="product-media-tag">{categoryMeta?.badge || 'CAT'}</span>
+                <strong>{product.name}</strong>
+                <span>{categoryMeta?.shortLabel || 'pedido rapido'}</span>
+              </div>
             )}
 
             {discount && (
               <span className="promo-pill" style={{ top: 16, right: 16, background: 'var(--danger)', color: '#fff' }}>
                 -{discount}% OFF
+              </span>
+            )}
+
+            {isCombo && (
+              <span className="promo-pill" style={{ top: 16, left: 16, background: '#111827', color: '#fff' }}>
+                Combo listo
               </span>
             )}
 
@@ -208,14 +240,44 @@ export default function ProductDetail() {
               </div>
             </div>
           )}
+
+          {notices.length > 0 && (
+            <div className="notice-card-grid" style={{ marginBottom: 0 }}>
+              {notices.map((notice) => (
+                <div key={notice} className="notice-card" style={{ marginBottom: 0 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <ShieldCheck size={16} style={{ color: '#B45309', flexShrink: 0, marginTop: 2 }} />
+                    <p style={{ margin: 0 }}>{notice}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
-              {product.brand} - {getCategoryLabel(product.categories)}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: categoryMeta?.accent || 'var(--brand)',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}
+              >
+                {categoryLabel}
+              </span>
+              {product.brand && (
+                <span style={{ fontSize: 12, color: 'var(--txt-muted)' }}>
+                  {product.brand}
+                </span>
+              )}
             </div>
+
             <h1 style={{ fontSize: 28, marginBottom: 8 }}>{product.name}</h1>
+
             {product.description && (
               <p style={{ fontSize: 14, color: 'var(--txt-muted)', lineHeight: 1.75 }}>
                 {product.description}
@@ -235,12 +297,12 @@ export default function ProductDetail() {
               )}
             </div>
             <div style={{ marginTop: 8, fontSize: 14, color: 'var(--success)', fontWeight: 700 }}>
-              Descuento del {storeConfig.discounts.memberPercent}% sobre el total del pedido
+              {user
+                ? 'Tu ahorro por cuenta se descuenta del total al confirmar.'
+                : `Registrate y ahorra ${storeConfig.discounts.memberPercent}% sobre el total del pedido.`}
             </div>
             <div style={{ marginTop: 4, fontSize: 13, color: 'var(--txt-muted)' }}>
-              {user
-                ? 'Tu ahorro se descuenta del total final al pagar.'
-                : 'Registrate y el descuento se aplica al total al momento de pagar.'}
+              Delivery {storeConfig.service.eta}. Atendemos de {storeConfig.service.hours}.
             </div>
           </div>
 
@@ -255,7 +317,7 @@ export default function ProductDetail() {
             }}
           >
             <Package size={16} />
-            {outOfStock ? 'Sin stock' : `Stock disponible: ${product.stock}`}
+            {outOfStock ? 'Sin stock en este momento' : `Stock disponible: ${product.stock}`}
           </div>
 
           <div
@@ -271,9 +333,9 @@ export default function ProductDetail() {
             }}
           >
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>Cantidad a comprar</div>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>Cantidad</div>
               <div style={{ fontSize: 12, color: 'var(--txt-muted)' }}>
-                Ajusta la cantidad y luego agrega o compra directo.
+                Ajusta y confirma en pocos toques.
               </div>
             </div>
             <div className="quantity-stepper">
@@ -300,28 +362,28 @@ export default function ProductDetail() {
           </div>
 
           <div className="detail-action-grid">
-            <button onClick={handleAdd} disabled={outOfStock} className="btn btn-blue btn-lg btn-full">
+            <button type="button" onClick={handleAdd} disabled={outOfStock} className="btn btn-blue btn-lg btn-full">
               <ShoppingCart size={18} />
-              {outOfStock ? 'Sin stock' : 'Agregar al carrito'}
+              {outOfStock ? 'Sin stock' : 'Agregar al pedido'}
             </button>
 
-            <button onClick={handleBuyNow} disabled={outOfStock} className="btn btn-primary btn-lg btn-full">
+            <button type="button" onClick={handleBuyNow} disabled={outOfStock} className="btn btn-primary btn-lg btn-full">
               <Zap size={18} />
-              Comprar ahora
+              Pedir ahora
             </button>
           </div>
 
           {inCart && (
             <div style={{ fontSize: 13, color: 'var(--txt-muted)', marginTop: -4 }}>
-              Ya tienes {inCart.qty} unidad{inCart.qty !== 1 ? 'es' : ''} en tu carrito. Si agregas mas, se acumulan.
+              Ya tienes {inCart.qty} unidad{inCart.qty !== 1 ? 'es' : ''} de este producto en tu pedido.
             </div>
           )}
 
           <div className="card" style={{ padding: 0 }}>
             {[
-              { icon: <Truck size={16} />, title: 'Entrega local', desc: storeConfig.city },
-              { icon: <ShieldCheck size={16} />, title: 'Beneficio por cuenta', desc: `${storeConfig.discounts.memberPercent}% OFF sobre el total para clientes registrados` },
-              { icon: 'Pago', title: 'Formas de pago', desc: `${storeConfig.payments.primary} o ${storeConfig.payments.secondary}` },
+              { icon: <Truck size={16} />, title: 'Entrega express', desc: storeConfig.service.eta },
+              { icon: <Clock size={16} />, title: 'Horario', desc: `Atendemos de ${storeConfig.service.hours}` },
+              { icon: <MapPin size={16} />, title: 'Cobertura', desc: storeConfig.service.coverage },
             ].map((item, index) => (
               <div
                 key={item.title}
@@ -333,7 +395,7 @@ export default function ProductDetail() {
                   borderBottom: index < 2 ? '1px solid var(--border)' : 'none',
                 }}
               >
-                <span style={{ color: 'var(--blue)', flexShrink: 0 }}>{item.icon}</span>
+                <span style={{ color: categoryMeta?.accent || 'var(--brand)', flexShrink: 0 }}>{item.icon}</span>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700 }}>{item.title}</div>
                   <div style={{ fontSize: 12, color: 'var(--txt-muted)' }}>{item.desc}</div>

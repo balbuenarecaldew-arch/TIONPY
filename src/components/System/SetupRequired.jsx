@@ -40,7 +40,7 @@ export default function SetupRequired({ missingEnvVars }) {
           margin: '1rem 0 0.75rem',
           color: '#F8FAFC',
         }}>
-          La tienda ya se puede desplegar, pero todavia no esta conectada.
+          La bodega ya se puede desplegar, pero todavia no esta conectada.
         </h1>
 
         <p style={{
@@ -50,7 +50,7 @@ export default function SetupRequired({ missingEnvVars }) {
           lineHeight: 1.6,
         }}>
           Faltan variables de entorno de Firebase y Supabase. Sin esas claves la app no
-          puede autenticar usuarios, leer productos ni guardar pedidos.
+          puede autenticar usuarios, leer catalogo ni guardar pedidos.
         </p>
 
         <div style={{

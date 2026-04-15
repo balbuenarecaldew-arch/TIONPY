@@ -100,7 +100,7 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
     return (
       <AddressModal
         title="Guarda tu primera direccion"
-        description="La dejamos lista para que en el checkout no tengas que escribir todo otra vez."
+        description="La dejamos lista para que tus proximos pedidos nocturnos salgan mucho mas rapido."
         initialValues={{
           label: 'Casa',
           full_name: pendingAddressSetup.full_name,

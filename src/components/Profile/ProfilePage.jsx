@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { User, Save, Loader2, MapPin, Plus } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../contexts/AuthContext';
 import AddressModal from '../Addresses/AddressModal';
 import { fetchUserAddresses, saveUserAddress } from '../../lib/addresses';
 import { storeConfig } from '../../config/store';
 
 export default function ProfilePage() {
   const { user, profile, updateProfileData } = useAuth();
-  const [form, setForm]       = useState({ full_name: profile?.full_name || '', phone: profile?.phone || '' });
+  const [form, setForm] = useState({ full_name: profile?.full_name || '', phone: profile?.phone || '' });
   const [loading, setLoading] = useState(false);
   const [addresses, setAddresses] = useState([]);
   const [addrLoading, setAddrLoading] = useState(true);
@@ -57,11 +57,17 @@ export default function ProfilePage() {
     };
   }, [user]);
 
-  function set(k, v) { setForm(f => ({ ...f, [k]: v })); }
+  function setField(key, value) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
 
-  async function handleSave(e) {
-    e.preventDefault();
-    if (!form.full_name.trim()) { toast.error('El nombre es requerido'); return; }
+  async function handleSave(event) {
+    event.preventDefault();
+    if (!form.full_name.trim()) {
+      toast.error('El nombre es requerido');
+      return;
+    }
+
     setLoading(true);
     try {
       await updateProfileData(form);
@@ -87,13 +93,20 @@ export default function ProfilePage() {
   return (
     <div className="container" style={{ paddingTop: '1.5rem', paddingBottom: '3rem', maxWidth: 520 }}>
       <h1 style={{ fontSize: 22, marginBottom: '1.5rem' }}>Mi cuenta</h1>
+
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: '1.5rem' }}>
-          <div style={{
-            width: 56, height: 56, borderRadius: 99,
-            background: 'var(--blue-light)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 99,
+              background: 'var(--blue-light)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
             <User size={26} style={{ color: 'var(--blue)' }} />
           </div>
           <div>
@@ -101,21 +114,26 @@ export default function ProfilePage() {
             <div style={{ fontSize: 13, color: 'var(--txt-muted)' }}>{user.email}</div>
           </div>
         </div>
+
         <div className="divider" />
+
         <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: '1.25rem' }}>
           <div className="field">
             <label>Nombre completo</label>
-            <input className="input" value={form.full_name} onChange={e => set('full_name', e.target.value)} />
+            <input className="input" value={form.full_name} onChange={(event) => setField('full_name', event.target.value)} />
           </div>
+
           <div className="field">
-            <label>Teléfono / WhatsApp</label>
-            <input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="0981 000 000" autoComplete="tel" inputMode="tel" />
+            <label>Telefono / WhatsApp</label>
+            <input className="input" value={form.phone} onChange={(event) => setField('phone', event.target.value)} placeholder="0981 000 000" autoComplete="tel" inputMode="tel" />
           </div>
+
           <div className="field">
             <label>Email</label>
             <input className="input" value={user.email} disabled autoComplete="email" style={{ background: 'var(--bg)', cursor: 'not-allowed' }} />
-            <small>El email no se puede cambiar desde aquí</small>
+            <small>El email no se puede cambiar desde aqui.</small>
           </div>
+
           <button type="submit" className="btn btn-primary" disabled={loading}>
             {loading
               ? <><Loader2 size={16} style={{ animation: 'spin .7s linear infinite' }} /> Guardando...</>
@@ -129,7 +147,7 @@ export default function ProfilePage() {
           <div>
             <h2 style={{ fontSize: 18, marginBottom: 4 }}>Mis direcciones</h2>
             <p style={{ fontSize: 13, color: 'var(--txt-muted)' }}>
-              Guarda tus direcciones una vez y luego solo las eliges al pedir.
+              Guarda tus zonas una sola vez y luego elige rapido al confirmar.
             </p>
           </div>
           <button type="button" className="btn btn-outline" onClick={() => setAddressModalOpen(true)}>
@@ -166,7 +184,7 @@ export default function ProfilePage() {
                 </div>
                 <div style={{ textAlign: 'left' }}>
                   <div style={{ fontWeight: 700, fontSize: 14 }}>
-                    {address.label} {address.is_default ? '• Principal' : ''}
+                    {address.label} {address.is_default ? '- Principal' : ''}
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--txt-muted)', lineHeight: 1.6 }}>
                     {address.full_name}
@@ -186,7 +204,7 @@ export default function ProfilePage() {
           <div className="empty-state" style={{ padding: '1rem 0' }}>
             <div className="icon">Direccion</div>
             <h3>Aun no guardaste direcciones</h3>
-            <p>Agrega una y tu checkout va a salir mucho mas rapido.</p>
+            <p>Agrega una y tus pedidos nocturnos van a salir mucho mas rapido.</p>
           </div>
         )}
       </div>

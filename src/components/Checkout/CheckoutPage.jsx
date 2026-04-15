@@ -3,9 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Check,
+  Clock,
   Loader2,
   MapPin,
   Plus,
+  ShieldCheck,
+  Truck,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../lib/supabase';
@@ -18,6 +21,7 @@ import { buildCheckoutSummary, generateDeliveryCode } from '../../lib/commerce';
 import { calculateDeliveryQuote, formatFactorRange } from '../../lib/delivery';
 import { fetchUserAddresses, saveUserAddress } from '../../lib/addresses';
 import { fetchDeliverySettings } from '../../lib/storeSettings';
+import { getProductNotices } from '../../config/catalog';
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
@@ -60,6 +64,13 @@ export default function CheckoutPage() {
   );
   const guestDiscountPreview = Math.round((pricingBase.subtotal * pricingBase.memberDiscountRate) / 100);
   const deliveryRuleLabel = deliveryQuote.factorRule ? formatFactorRange(deliveryQuote.factorRule) : '';
+  const checkoutNotices = useMemo(() => {
+    const unique = new Set();
+    checkoutItems.forEach((item) => {
+      getProductNotices(item).forEach((notice) => unique.add(notice));
+    });
+    return [...unique];
+  }, [checkoutItems]);
 
   useEffect(() => {
     let cancelled = false;
@@ -248,7 +259,7 @@ export default function CheckoutPage() {
         clearCart();
       }
 
-      toast.success(`Pedido recibido. Tu codigo de entrega es ${deliveryCode}`);
+      toast.success(`Pedido confirmado. Tu codigo de entrega es ${deliveryCode}`);
       navigate(`/mis-pedidos/${order.id}`);
     } catch (error) {
       console.error(error);
@@ -272,11 +283,11 @@ export default function CheckoutPage() {
     return (
       <div className="container" style={{ paddingTop: '2rem', paddingBottom: '3rem' }}>
         <div className="empty-state">
-          <div className="icon">Carrito</div>
-          <h3>No hay productos para pagar</h3>
-          <p>Agrega productos o usa "Comprar ahora" desde la tienda.</p>
+          <div className="icon">Pedido</div>
+          <h3>No hay productos para confirmar</h3>
+          <p>Agrega productos o usa "Pedir ahora" desde la bodega.</p>
           <Link to="/" className="btn btn-primary" style={{ marginTop: '0.75rem' }}>
-            Volver a la tienda
+            Volver a la bodega
           </Link>
         </div>
       </div>
@@ -298,7 +309,7 @@ export default function CheckoutPage() {
         }}
       >
         <ArrowLeft size={16} />
-        {hasDirectCheckout ? 'Volver a la tienda' : 'Volver al carrito'}
+        {hasDirectCheckout ? 'Volver a la bodega' : 'Volver a tu pedido'}
       </Link>
 
       <div className="checkout-shell">
@@ -314,23 +325,31 @@ export default function CheckoutPage() {
               }}
             >
               <div>
-                <h1 style={{ fontSize: 24, marginBottom: 6 }}>Finalizar compra</h1>
+                <h1 style={{ fontSize: 24, marginBottom: 6 }}>Confirmar pedido</h1>
                 <p style={{ fontSize: 14, color: 'var(--txt-muted)' }}>
-                  {hasDirectCheckout ? 'Estas comprando directo este producto.' : 'Revisa tus datos y confirma el pedido.'}
+                  {hasDirectCheckout
+                    ? 'Estas enviando este producto en modo express.'
+                    : 'Revisa direccion, delivery y observaciones antes de confirmar.'}
                 </p>
               </div>
             </div>
           </div>
 
+          <div className="checkout-note-grid">
+            <InfoPill icon={Clock} label="Entrega estimada" value={storeConfig.service.eta} />
+            <InfoPill icon={Truck} label="Horario" value={storeConfig.service.hours} />
+            <InfoPill icon={MapPin} label="Cobertura" value={storeConfig.service.coverage} />
+          </div>
+
           {!user ? (
-            <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: '1rem' }}>
               <h2 style={{ fontSize: 18 }}>Ingresa para continuar</h2>
               <p style={{ fontSize: 14, color: 'var(--txt-muted)' }}>
-                Si te registras ahora, este pedido se procesa con tu descuento y tus datos quedan guardados para la proxima compra.
+                Guarda tus datos una vez y tus proximos pedidos saldran mucho mas rapido desde el celular.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <button onClick={openRegister} className="btn btn-primary btn-full btn-lg">
-                  Registrarme y continuar
+                  Crear cuenta y continuar
                 </button>
                 <button onClick={openLogin} className="btn btn-outline btn-full btn-lg">
                   Ya tengo cuenta
@@ -339,10 +358,10 @@ export default function CheckoutPage() {
             </div>
           ) : (
             <>
-              <div className="card" style={{ marginBottom: '1rem' }}>
+              <div className="card" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
                 <h2 style={{ fontSize: 17, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <MapPin size={18} style={{ color: 'var(--blue)' }} />
-                  Direccion de entrega
+                  <MapPin size={18} style={{ color: 'var(--brand)' }} />
+                  Zona de entrega
                 </h2>
 
                 {addrLoading ? (
@@ -359,8 +378,8 @@ export default function CheckoutPage() {
                         onClick={() => setSelectedAddr(addr)}
                         className="address-card"
                         style={{
-                          borderColor: selectedAddr?.id === addr.id ? 'var(--blue)' : 'var(--border)',
-                          background: selectedAddr?.id === addr.id ? 'var(--blue-light)' : '#fff',
+                          borderColor: selectedAddr?.id === addr.id ? 'var(--brand)' : 'var(--border)',
+                          background: selectedAddr?.id === addr.id ? '#FFF7ED' : '#fff',
                         }}
                       >
                         <div
@@ -368,8 +387,8 @@ export default function CheckoutPage() {
                             width: 22,
                             height: 22,
                             borderRadius: 999,
-                            border: `2px solid ${selectedAddr?.id === addr.id ? 'var(--blue)' : 'var(--border)'}`,
-                            background: selectedAddr?.id === addr.id ? 'var(--blue)' : '#fff',
+                            border: `2px solid ${selectedAddr?.id === addr.id ? 'var(--brand)' : 'var(--border)'}`,
+                            background: selectedAddr?.id === addr.id ? 'var(--brand)' : '#fff',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -402,24 +421,37 @@ export default function CheckoutPage() {
                       style={{ justifyContent: 'center' }}
                     >
                       <Plus size={16} />
-                      {addresses.length ? 'Agregar nueva direccion' : 'Guardar mi direccion'}
+                      {addresses.length ? 'Agregar otra direccion' : 'Guardar direccion'}
                     </button>
                   </div>
                 )}
               </div>
 
-              <div className="card">
+              <div className="card" style={{ marginBottom: checkoutNotices.length ? '1rem' : 0 }}>
                 <div className="field">
-                  <label>Nota para el repartidor</label>
+                  <label>Observaciones del pedido</label>
                   <textarea
                     className="input"
                     rows={3}
                     value={notes}
                     onChange={(event) => setNotes(event.target.value)}
-                    placeholder="Ej: llamar antes de llegar, entregar a recepcion..."
+                    placeholder="Ej: tocar timbre 2, entregar en porteria, sin llamar..."
                   />
                 </div>
               </div>
+
+              {checkoutNotices.length > 0 && (
+                <div className="notice-card-grid" style={{ marginTop: 0 }}>
+                  {checkoutNotices.map((notice) => (
+                    <div key={notice} className="notice-card">
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                        <ShieldCheck size={16} style={{ color: '#B45309', flexShrink: 0, marginTop: 2 }} />
+                        <p style={{ margin: 0 }}>{notice}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -444,7 +476,7 @@ export default function CheckoutPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14 }}>
               <SummaryRow label="Subtotal" value={`Gs. ${summary.subtotal.toLocaleString('es-PY')}`} />
               <SummaryRow
-                label={`Descuento total por registro (${summary.memberDiscountRate}%)`}
+                label={`Ahorro por cuenta (${summary.memberDiscountRate}%)`}
                 value={
                   user
                     ? `- Gs. ${summary.discount.toLocaleString('es-PY')}`
@@ -453,7 +485,7 @@ export default function CheckoutPage() {
                 highlight
               />
               <SummaryRow
-                label="Delivery"
+                label="Costo de delivery"
                 value={summary.shipping === 0 ? 'GRATIS' : `Gs. ${summary.shipping.toLocaleString('es-PY')}`}
                 highlight={summary.shipping === 0}
               />
@@ -462,10 +494,36 @@ export default function CheckoutPage() {
             <div className="divider" />
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
-              <span style={{ fontWeight: 700 }}>Total</span>
+              <span style={{ fontWeight: 700 }}>Total del pedido</span>
               <span style={{ fontSize: 24, fontWeight: 700, color: 'var(--brand)', fontFamily: "'Space Grotesk', sans-serif" }}>
                 Gs. {summary.total.toLocaleString('es-PY')}
               </span>
+            </div>
+
+            <div className="checkout-highlight-list">
+              <div className="checkout-highlight-card">
+                <Clock size={18} />
+                <div>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Tiempo estimado</div>
+                  <div style={{ fontSize: 13 }}>
+                    {storeConfig.service.eta}
+                    {deliveryRuleLabel ? ` - tramo ${deliveryRuleLabel}` : ''}
+                  </div>
+                </div>
+              </div>
+              <div className="checkout-highlight-card">
+                <Truck size={18} />
+                <div>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Delivery</div>
+                  <div style={{ fontSize: 13 }}>
+                    {deliveryQuote.mode === 'distance'
+                      ? 'Calculado por distancia y monto del pedido.'
+                      : deliveryQuote.mode === 'free'
+                        ? 'Tu pedido entra con delivery gratis.'
+                        : 'Usando tarifa base hasta completar la ubicacion exacta.'}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div
@@ -499,7 +557,7 @@ export default function CheckoutPage() {
               </button>
             ) : (
               <button onClick={openRegister} className="btn btn-primary btn-full btn-lg" style={{ marginTop: '1rem' }}>
-                Registrarme y pagar con descuento
+                Crear cuenta y confirmar
               </button>
             )}
 
@@ -521,11 +579,11 @@ export default function CheckoutPage() {
 
       {user && addressModalOpen && (
         <AddressModal
-          title={addresses.length ? 'Agregar nueva direccion' : 'Guarda tu direccion'}
+          title={addresses.length ? 'Agregar otra direccion' : 'Guarda tu direccion'}
           description={
             addresses.length
-              ? 'Deja otra direccion lista para futuras entregas.'
-              : 'Guardala ahora y tu checkout va a salir mucho mas rapido.'
+              ? 'Deja otra zona lista para futuros pedidos nocturnos.'
+              : 'Guardala ahora y la proxima compra te va a llevar mucho menos tiempo.'
           }
           initialValues={{
             label: 'Casa',
@@ -538,6 +596,18 @@ export default function CheckoutPage() {
           onClose={() => setAddressModalOpen(false)}
         />
       )}
+    </div>
+  );
+}
+
+function InfoPill({ icon: Icon, label, value }) {
+  return (
+    <div className="checkout-info-pill">
+      <Icon size={16} style={{ color: 'var(--brand)' }} />
+      <div>
+        <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--txt-muted)' }}>{label}</div>
+        <strong style={{ fontSize: 13 }}>{value}</strong>
+      </div>
     </div>
   );
 }

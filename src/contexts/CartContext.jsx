@@ -2,7 +2,8 @@ import React, { createContext, useContext, useEffect, useReducer, useState } fro
 
 const CartContext = createContext(null);
 
-const STORAGE_KEY = 'tionpy_cart';
+const STORAGE_KEY = 'luna_roja_cart';
+const LEGACY_STORAGE_KEYS = ['tionpy_cart'];
 
 function cartReducer(state, action) {
   switch (action.type) {
@@ -62,7 +63,8 @@ export function CartProvider({ children }) {
   // Cargar desde localStorage al iniciar
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(STORAGE_KEY)
+        || LEGACY_STORAGE_KEYS.map((key) => localStorage.getItem(key)).find(Boolean);
       if (saved) dispatch({ type: 'LOAD', items: JSON.parse(saved) });
     } catch {}
   }, []);

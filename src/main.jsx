@@ -19,12 +19,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
               style: {
                 fontFamily: 'Sora, sans-serif',
                 fontSize: '13px',
-                background: '#1A2744',
+                background: '#1F2937',
                 color: '#fff',
                 borderRadius: '8px',
               },
               success: { iconTheme: { primary: '#10B981', secondary: '#fff' } },
-              error:   { iconTheme: { primary: '#EF4444', secondary: '#fff' } },
+              error: { iconTheme: { primary: '#EF4444', secondary: '#fff' } },
             }}
           />
         </CartProvider>

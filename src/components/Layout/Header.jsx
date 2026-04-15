@@ -41,8 +41,8 @@ export default function Header() {
   }
 
   const mobileNavItems = [
-    { to: '/', label: 'Tienda', icon: Store, show: true },
-    { to: '/carrito', label: 'Carrito', icon: ShoppingCart, show: true, badge: count },
+    { to: '/', label: 'Bodega', icon: Store, show: true },
+    { to: '/carrito', label: 'Pedido', icon: ShoppingCart, show: true, badge: count },
     { to: user ? '/mis-pedidos' : '/', label: 'Pedidos', icon: Package, show: Boolean(user) },
     { to: user ? '/mi-cuenta' : '/', label: 'Cuenta', icon: User, show: true },
     { to: '/admin', label: 'Admin', icon: LayoutDashboard, show: Boolean(isAdmin) },
@@ -52,30 +52,35 @@ export default function Header() {
     <>
       <header
         style={{
-          background: 'var(--brand)',
+          background: 'linear-gradient(135deg, #111827 0%, #7C2D12 100%)',
           position: 'sticky',
           top: 0,
           zIndex: 100,
-          boxShadow: '0 2px 8px rgba(0,0,0,.12)',
+          boxShadow: '0 2px 18px rgba(17, 24, 39, 0.2)',
         }}
       >
         <div className="container header-shell">
           <Link to="/" style={{ textDecoration: 'none', flexShrink: 0 }}>
-            <span
-              style={{
-                fontFamily: "'Space Grotesk', sans-serif",
-                fontWeight: 700,
-                fontSize: 20,
-                color: '#fff',
-                letterSpacing: '-0.5px',
-              }}
-            >
-              {storeConfig.name}
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span
+                style={{
+                  fontFamily: "'Space Grotesk', sans-serif",
+                  fontWeight: 700,
+                  fontSize: 20,
+                  color: '#fff',
+                  letterSpacing: '-0.5px',
+                }}
+              >
+                {storeConfig.name}
+              </span>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,.76)' }} className="hide-mobile">
+                {storeConfig.tagline}
+              </span>
+            </div>
           </Link>
 
           <nav className="hide-mobile" style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
-            <HeaderLink to="/">Tienda</HeaderLink>
+            <HeaderLink to="/">Catalogo nocturno</HeaderLink>
           </nav>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
@@ -115,11 +120,11 @@ export default function Header() {
               </div>
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button onClick={openLogin} className="btn btn-outline header-ghost-btn">
+                <button type="button" onClick={openLogin} className="btn btn-outline header-ghost-btn">
                   Ingresar
                 </button>
-                <button onClick={openRegister} className="btn btn-accent btn-sm hide-mobile">
-                  Registrarse
+                <button type="button" onClick={openRegister} className="btn btn-accent btn-sm hide-mobile">
+                  Crear cuenta
                 </button>
               </div>
             )}

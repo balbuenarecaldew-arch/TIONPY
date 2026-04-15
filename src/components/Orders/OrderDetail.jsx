@@ -7,7 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 const STEPS = [
   { key: 'pendiente', label: 'Pedido recibido', icon: Clock },
   { key: 'confirmado', label: 'Confirmado', icon: CheckCircle },
-  { key: 'preparando', label: 'Preparando paquete', icon: Package },
+  { key: 'preparando', label: 'Preparando pedido', icon: Package },
   { key: 'en_camino', label: 'En camino', icon: Truck },
   { key: 'entregado', label: 'Entregado', icon: CheckCircle },
 ];

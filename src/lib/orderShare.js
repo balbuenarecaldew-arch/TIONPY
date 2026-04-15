@@ -179,7 +179,7 @@ export async function generateOrderSummaryImageBlob({
   const wrappedTransferLines = transferLines.flatMap((line) => wrapText(ctx, line, SUMMARY_WIDTH - CARD_PADDING * 3));
   const footerLines = wrapText(
     ctx,
-    'Envia tu comprobante por WhatsApp para confirmar y despachar el pedido.',
+    'Envia tu comprobante por WhatsApp para confirmar y despachar tu pedido.',
     SUMMARY_WIDTH - CARD_PADDING * 3
   );
 
@@ -193,17 +193,17 @@ export async function generateOrderSummaryImageBlob({
   ctx = canvas.getContext('2d');
 
   const gradient = ctx.createLinearGradient(0, 0, 0, canvasHeight);
-  gradient.addColorStop(0, '#eff6ff');
-  gradient.addColorStop(1, '#f8fafc');
+  gradient.addColorStop(0, '#fff7ed');
+  gradient.addColorStop(1, '#fffaf5');
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, SUMMARY_WIDTH, canvasHeight);
 
   fillRoundRect(ctx, CARD_PADDING, CARD_PADDING, SUMMARY_WIDTH - CARD_PADDING * 2, canvasHeight - CARD_PADDING * 2, 36, '#ffffff');
-  strokeRoundRect(ctx, CARD_PADDING, CARD_PADDING, SUMMARY_WIDTH - CARD_PADDING * 2, canvasHeight - CARD_PADDING * 2, 36, '#dbeafe');
+  strokeRoundRect(ctx, CARD_PADDING, CARD_PADDING, SUMMARY_WIDTH - CARD_PADDING * 2, canvasHeight - CARD_PADDING * 2, 36, '#fed7aa');
 
-  fillRoundRect(ctx, CARD_PADDING + 28, CARD_PADDING + 28, SUMMARY_WIDTH - CARD_PADDING * 2 - 56, 162, 28, '#1d4ed8');
+  fillRoundRect(ctx, CARD_PADDING + 28, CARD_PADDING + 28, SUMMARY_WIDTH - CARD_PADDING * 2 - 56, 162, 28, '#7c2d12');
 
-  ctx.fillStyle = '#bfdbfe';
+  ctx.fillStyle = '#fed7aa';
   ctx.font = '600 24px Arial';
   ctx.fillText('Resumen de cobro', CARD_PADDING + 62, CARD_PADDING + 76);
 
@@ -212,10 +212,10 @@ export async function generateOrderSummaryImageBlob({
   ctx.fillText(storeName, CARD_PADDING + 62, CARD_PADDING + 132);
 
   ctx.font = '500 24px Arial';
-  ctx.fillText(`Pedido ${order?.order_number || 'TION'}`, CARD_PADDING + 62, CARD_PADDING + 170);
+  ctx.fillText(`Pedido ${order?.order_number || 'LUNA'}`, CARD_PADDING + 62, CARD_PADDING + 170);
 
-  fillRoundRect(ctx, SUMMARY_WIDTH - CARD_PADDING - 312, CARD_PADDING + 54, 250, 84, 24, '#eff6ff');
-  ctx.fillStyle = '#1e3a8a';
+  fillRoundRect(ctx, SUMMARY_WIDTH - CARD_PADDING - 312, CARD_PADDING + 54, 250, 84, 24, '#fff7ed');
+  ctx.fillStyle = '#7c2d12';
   ctx.font = '700 22px Arial';
   ctx.fillText('Total del pedido', SUMMARY_WIDTH - CARD_PADDING - 278, CARD_PADDING + 90);
   ctx.font = '700 34px Arial';
@@ -286,9 +286,9 @@ export async function generateOrderSummaryImageBlob({
 
   cursorY += itemsHeight + 28;
 
-  fillRoundRect(ctx, sectionX, cursorY, sectionWidth, transferHeight, 24, '#ecfdf5');
-  strokeRoundRect(ctx, sectionX, cursorY, sectionWidth, transferHeight, 24, '#bbf7d0');
-  ctx.fillStyle = '#065f46';
+  fillRoundRect(ctx, sectionX, cursorY, sectionWidth, transferHeight, 24, '#fff7ed');
+  strokeRoundRect(ctx, sectionX, cursorY, sectionWidth, transferHeight, 24, '#fdba74');
+  ctx.fillStyle = '#9a3412';
   ctx.font = '700 28px Arial';
   ctx.fillText('Datos para la transferencia', sectionX + 28, cursorY + 44);
 
@@ -298,7 +298,7 @@ export async function generateOrderSummaryImageBlob({
     : ['Completa los datos de cobro en el panel admin para que se adjunten aqui.'];
 
   ctx.font = '500 22px Arial';
-  ctx.fillStyle = '#064e3b';
+  ctx.fillStyle = '#7c2d12';
   for (const line of linesToDraw) {
     ctx.fillText(line, sectionX + 28, transferY);
     transferY += 34;
@@ -306,8 +306,8 @@ export async function generateOrderSummaryImageBlob({
 
   cursorY += transferHeight + 28;
 
-  fillRoundRect(ctx, sectionX, cursorY, sectionWidth, footerHeight, 24, '#eff6ff');
-  ctx.fillStyle = '#1e3a8a';
+  fillRoundRect(ctx, sectionX, cursorY, sectionWidth, footerHeight, 24, '#fff4e6');
+  ctx.fillStyle = '#9a3412';
   ctx.font = '700 24px Arial';
   ctx.fillText('Siguiente paso', sectionX + 28, cursorY + 42);
 

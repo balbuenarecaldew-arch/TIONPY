@@ -10,7 +10,7 @@ import {
 import { buildPaymentRequestMessage } from '../../lib/orderShare';
 
 const PREVIEW_ORDER = {
-  order_number: 'TION-20260413-0007',
+  order_number: 'LUNA-20260413-0007',
   customer_name: 'Cliente ejemplo',
   total: 84500,
   address_snapshot: {
@@ -190,8 +190,8 @@ export default function ManagePayments() {
       <div className="card" style={{ background: 'linear-gradient(135deg, rgba(37,99,235,.08), rgba(16,185,129,.08))' }}>
         <strong style={{ display: 'block', marginBottom: 6 }}>Como funciona</strong>
         <p style={{ fontSize: 14, color: 'var(--txt-muted)', lineHeight: 1.7 }}>
-          Desde cada pedido vas a poder tocar el boton de WhatsApp. La app prepara el texto de cobro y genera una imagen
-          con el resumen del pedido para compartirla junto al mensaje.
+          Desde cada pedido puedes tocar el boton de WhatsApp. La app prepara el texto de cobro y genera una imagen
+          con el resumen para compartirla junto al mensaje.
         </p>
       </div>
     </div>

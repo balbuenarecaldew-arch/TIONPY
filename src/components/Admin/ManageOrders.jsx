@@ -360,7 +360,7 @@ export default function ManageOrders() {
         <div>
           <h1 style={{ fontSize: 24, marginBottom: 4 }}>Pedidos</h1>
           <p style={{ fontSize: 14, color: 'var(--txt-muted)' }}>
-            Mostrando {filtered.length} pedido{filtered.length !== 1 ? 's' : ''}.
+            Mostrando {filtered.length} pedido{filtered.length !== 1 ? 's' : ''} para despacho nocturno.
           </p>
         </div>
       </div>

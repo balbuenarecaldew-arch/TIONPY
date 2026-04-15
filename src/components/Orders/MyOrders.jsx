@@ -40,9 +40,9 @@ export default function MyOrders() {
         <div className="empty-state">
           <div className="icon">Pedidos</div>
           <h3>Todavia no hiciste ningun pedido</h3>
-          <p>Cuando compres, aqui veras tu estado y tu codigo de entrega.</p>
+          <p>Cuando confirmes uno, aqui veras el estado, el total y tu codigo de entrega.</p>
           <Link to="/" className="btn btn-primary" style={{ marginTop: '0.75rem' }}>
-            Ir a la tienda
+            Ir a la bodega
           </Link>
         </div>
       ) : (

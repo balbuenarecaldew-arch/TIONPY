@@ -178,7 +178,7 @@ export default function ManageDelivery() {
         <div>
           <h1 style={{ fontSize: 24, marginBottom: 4 }}>Delivery</h1>
           <p style={{ fontSize: 14, color: 'var(--txt-muted)' }}>
-            Calcula por distancia, aplica factor por monto y nunca supera Gs. 30.000.
+            Calcula por distancia, aplica factor por monto y deja lista la operacion nocturna.
           </p>
         </div>
         <button onClick={handleSave} className="btn btn-primary" disabled={saving}>
@@ -316,7 +316,7 @@ export default function ManageDelivery() {
           <div>
             <h2 style={{ fontSize: 17 }}>Factores por monto</h2>
             <p style={{ fontSize: 13, color: 'var(--txt-muted)' }}>
-              Ejemplo: de 0 a 100.000 factor 1, de 100.001 a 200.000 factor 0.5, y luego 0.
+              Ejemplo: de 0 a 100.000 factor 1, de 100.001 a 200.000 factor 0.5, y despues 0.
             </p>
           </div>
           <button onClick={addFactorRule} className="btn btn-outline btn-sm">
@@ -396,6 +396,7 @@ export default function ManageDelivery() {
             >
               <div>
                 <div style={{ fontWeight: 700 }}>Compra de Gs. {item.subtotal.toLocaleString('es-PY')}</div>
+                <div style={{ fontSize: 12, color: 'var(--txt-muted)', marginTop: 2 }}>Pedido nocturno</div>
                 <div style={{ fontSize: 13, color: 'var(--txt-muted)' }}>
                   {item.label}
                 </div>

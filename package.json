@@ -1,6 +1,6 @@
 {
-  "name": "tionpy",
-  "description": "TIONPY storefront built with React + Vite",
+  "name": "luna-roja-bodega",
+  "description": "Luna Roja bodega nocturna built with React + Vite",
   "private": true,
   "version": "1.0.0",
   "type": "module",

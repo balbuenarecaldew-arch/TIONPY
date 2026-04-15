@@ -1,14 +1,18 @@
+import { CATEGORY_SEED, getCategoryLabel as getCatalogCategoryLabel } from './catalog';
+
 export const storeConfig = {
-  name: 'TIONPY',
-  slogan: 'Compra desde tu zona de confort',
+  name: 'Luna Roja',
+  slogan: 'Tu bodega express',
+  tagline: 'Pedidos rapidos de noche',
+  description: 'Bebidas, hielo, snacks, farmacia basica y combos listos para pedir desde el celular.',
   city: 'Ayolas, Misiones',
   discounts: {
     memberPercent: 5,
-    memberLabel: 'Descuento por registro',
+    memberLabel: 'Ahorro por cuenta',
   },
   shipping: {
-    cost: 25000,
-    freeFrom: 300000,
+    cost: 8000,
+    freeFrom: 120000,
   },
   payments: {
     primary: 'Contra entrega',
@@ -26,32 +30,19 @@ export const storeConfig = {
   admin: {
     email: 'sewyllconstrucciones@gmail.com',
   },
-  categories: [
-    'Celulares',
-    'Audio',
-    'Computacion',
-    'Gaming',
-    'Accesorios',
-    'Smart Home',
-  ],
-};
-
-const categoryLabelsBySlug = {
-  telefonia: 'Celulares',
-  celulares: 'Celulares',
-  audio: 'Audio',
-  computacion: 'Computacion',
-  gaming: 'Gaming',
-  accesorios: 'Accesorios',
-  'smart-home': 'Smart Home',
+  service: {
+    eta: '20 a 35 min',
+    coverage: 'Cobertura en Ayolas centro y zonas cercanas',
+    hours: '18:00 a 03:00',
+    quickMessage: 'Combos listos para la previa, la madrugada o una compra urgente.',
+  },
+  notices: {
+    alcohol: 'Venta solo para mayores de edad.',
+    pharmacy: 'Solo productos de venta libre. No incluye medicamentos bajo receta.',
+  },
+  categories: CATEGORY_SEED.map((category) => category.name),
 };
 
 export function getCategoryLabel(category) {
-  if (!category) return '';
-
-  if (typeof category === 'string') {
-    return categoryLabelsBySlug[category] || category;
-  }
-
-  return categoryLabelsBySlug[category.slug] || category.name || '';
+  return getCatalogCategoryLabel(category);
 }

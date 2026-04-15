@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react';
+import { ArrowLeft, Clock, Minus, Plus, ShoppingBag, Trash2, Truck } from 'lucide-react';
 import { useCart } from '../../contexts/CartContext';
 import { useAuth } from '../../contexts/AuthContext';
 import AuthModal from '../Auth/AuthModal';
 import { buildCheckoutSummary } from '../../lib/commerce';
 import { storeConfig } from '../../config/store';
-
-const EMOJI_MAP = { 1: 'Cel', 2: 'Aud', 3: 'Game', 4: 'Acc', 5: 'Home', 6: 'PC' };
+import { getCategoryMeta, getProductCategorySlug } from '../../config/catalog';
 
 export default function CartPage() {
   const navigate = useNavigate();
@@ -23,24 +22,16 @@ export default function CartPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function openRegister() {
-    setAuthOpen(true);
-  }
-
-  function handleCheckout() {
-    navigate('/checkout');
-  }
-
   if (items.length === 0) {
     return (
       <div className="container page-pad">
         <div className="empty-state">
-          <div className="icon">Carrito</div>
-          <h3>Tu carrito esta vacio</h3>
-          <p>Explora la tienda y agrega algo que valga la pena.</p>
+          <div className="icon">Pedido</div>
+          <h3>Tu pedido esta vacio</h3>
+          <p>Agrega bebidas, hielo, snacks, farmacia basica o un combo para arrancar.</p>
           <Link to="/" className="btn btn-primary" style={{ marginTop: '0.75rem' }}>
             <ShoppingBag size={16} />
-            Ir a la tienda
+            Ir a la bodega
           </Link>
         </div>
       </div>
@@ -62,7 +53,7 @@ export default function CartPage() {
         }}
       >
         <ArrowLeft size={16} />
-        Seguir comprando
+        Agregar mas productos
       </Link>
 
       <div className="cart-shell">
@@ -78,84 +69,97 @@ export default function CartPage() {
               }}
             >
               <div>
-                <h1 style={{ fontSize: 24, marginBottom: 4 }}>Mi carrito</h1>
+                <h1 style={{ fontSize: 24, marginBottom: 4 }}>Tu pedido</h1>
                 <p style={{ fontSize: 14, color: 'var(--txt-muted)' }}>
-                  {items.length} producto{items.length !== 1 ? 's' : ''} listos para pagar.
+                  {items.length} producto{items.length !== 1 ? 's' : ''} listos para confirmar.
                 </p>
               </div>
             </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {items.map((item) => (
-              <div key={item.id} className="card cart-item-card">
-                <div className="cart-thumb">
-                  {item.image_url ? (
-                    <img
-                      src={item.image_url}
-                      alt={item.name}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                  ) : (
-                    EMOJI_MAP[item.category_id] || 'Item'
-                  )}
-                </div>
+            {items.map((item) => {
+              const categoryMeta = getCategoryMeta(item.categories || getProductCategorySlug(item));
 
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                    {item.brand}
-                  </div>
-                  <div style={{ fontSize: 15, fontWeight: 600, margin: '4px 0 8px', lineHeight: 1.4 }}>
-                    {item.name}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--success)', fontWeight: 600 }}>
-                    El descuento se calcula sobre el total del pedido.
-                  </div>
-                </div>
-
-                <div className="cart-item-actions">
-                  <div className="cart-item-qty-row" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <button type="button" className="qty-btn" onClick={() => setQty(item.id, item.qty - 1)}>
-                      <Minus size={12} />
-                    </button>
-                    <span style={{ minWidth: 24, textAlign: 'center', fontWeight: 700 }}>{item.qty}</span>
-                    <button
-                      type="button"
-                      className="qty-btn"
-                      onClick={() => setQty(item.id, item.qty + 1)}
-                      disabled={item.qty >= item.stock}
-                    >
-                      <Plus size={12} />
-                    </button>
+              return (
+                <div key={item.id} className="card cart-item-card">
+                  <div
+                    className="cart-thumb"
+                    style={{
+                      background: item.image_url ? '#F3F4F6' : categoryMeta?.gradient || '#1F2937',
+                      color: '#fff',
+                    }}
+                  >
+                    {item.image_url ? (
+                      <img
+                        src={item.image_url}
+                        alt={item.name}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      <div style={{ textAlign: 'center', padding: 10 }}>
+                        <div style={{ fontSize: 10, opacity: 0.82, marginBottom: 4 }}>{categoryMeta?.badge || 'CAT'}</div>
+                        <strong style={{ fontSize: 12 }}>{item.name}</strong>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="cart-item-price-row" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ fontWeight: 700, color: 'var(--brand)', fontFamily: "'Space Grotesk', sans-serif" }}>
-                      Gs. {(item.price * item.qty).toLocaleString('es-PY')}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removeItem(item.id)}
-                      style={{ background: 'none', border: 'none', color: 'var(--danger)', padding: 4 }}
-                      title="Eliminar"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: categoryMeta?.accent || 'var(--brand)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                      {categoryMeta?.name || 'Pedido rapido'}
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 600, margin: '4px 0 8px', lineHeight: 1.4 }}>
+                      {item.name}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--txt-muted)' }}>
+                      Delivery {storeConfig.service.eta}
+                    </div>
+                  </div>
+
+                  <div className="cart-item-actions">
+                    <div className="cart-item-qty-row" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <button type="button" className="qty-btn" onClick={() => setQty(item.id, item.qty - 1)}>
+                        <Minus size={12} />
+                      </button>
+                      <span style={{ minWidth: 24, textAlign: 'center', fontWeight: 700 }}>{item.qty}</span>
+                      <button
+                        type="button"
+                        className="qty-btn"
+                        onClick={() => setQty(item.id, item.qty + 1)}
+                        disabled={item.qty >= item.stock}
+                      >
+                        <Plus size={12} />
+                      </button>
+                    </div>
+
+                    <div className="cart-item-price-row" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontWeight: 700, color: 'var(--brand)', fontFamily: "'Space Grotesk', sans-serif" }}>
+                        Gs. {(item.price * item.qty).toLocaleString('es-PY')}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item.id)}
+                        style={{ background: 'none', border: 'none', color: 'var(--danger)', padding: 4 }}
+                        title="Quitar del pedido"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
         <aside className="cart-sidebar">
           <div className="card checkout-summary-card">
-            <h3 style={{ fontSize: 18, marginBottom: '1rem' }}>Resumen del pago</h3>
+            <h3 style={{ fontSize: 18, marginBottom: '1rem' }}>Resumen rapido</h3>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14 }}>
               <SummaryRow label="Subtotal" value={`Gs. ${summary.subtotal.toLocaleString('es-PY')}`} />
               <SummaryRow
-                label={`Descuento total por registro (${storeConfig.discounts.memberPercent}%)`}
+                label={`Ahorro por cuenta (${storeConfig.discounts.memberPercent}%)`}
                 value={
                   user
                     ? `- Gs. ${summary.discount.toLocaleString('es-PY')}`
@@ -163,25 +167,36 @@ export default function CartPage() {
                 }
                 highlight
               />
-              <SummaryRow label="Delivery" value="Se calcula con Maps en checkout" />
+              <SummaryRow label="Costo de delivery" value="Se calcula por zona en checkout" />
             </div>
 
             <div className="divider" />
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <span style={{ fontWeight: 700 }}>Total sin delivery</span>
+              <span style={{ fontWeight: 700 }}>Total parcial</span>
               <span style={{ fontSize: 24, fontWeight: 700, color: 'var(--brand)', fontFamily: "'Space Grotesk', sans-serif" }}>
                 Gs. {summary.subtotalAfterDiscount.toLocaleString('es-PY')}
               </span>
             </div>
 
-            <button onClick={handleCheckout} className="btn btn-primary btn-full btn-lg" style={{ marginTop: '1rem' }}>
-              {user ? 'Ir al pago' : 'Ir al pago y activar descuento'}
+            <div className="cart-info-stack">
+              <div className="cart-info-item">
+                <Clock size={15} />
+                <span>Entrega estimada: {storeConfig.service.eta}</span>
+              </div>
+              <div className="cart-info-item">
+                <Truck size={15} />
+                <span>Horario: {storeConfig.service.hours}</span>
+              </div>
+            </div>
+
+            <button onClick={() => navigate('/checkout')} className="btn btn-primary btn-full btn-lg" style={{ marginTop: '1rem' }}>
+              {user ? 'Confirmar pedido' : 'Continuar con mi pedido'}
             </button>
 
             {!user && (
-              <button onClick={openRegister} className="btn btn-outline btn-full" style={{ marginTop: '0.75rem' }}>
-                Registrarme ahora
+              <button onClick={() => setAuthOpen(true)} className="btn btn-outline btn-full" style={{ marginTop: '0.75rem' }}>
+                Crear cuenta y guardar mis datos
               </button>
             )}
           </div>
