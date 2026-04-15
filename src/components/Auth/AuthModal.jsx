@@ -18,6 +18,7 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
     password: '',
     fullName: '',
     phone: '',
+    referralCode: '',
     confirmPassword: '',
   });
 
@@ -66,8 +67,9 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
           password: form.password,
           fullName: form.fullName,
           phone: form.phone,
+          referralCode: form.referralCode,
         });
-        toast.success('Cuenta creada. Guardemos tu primera direccion');
+        toast.success('Cuenta creada. Ya tienes Gs. 10.000 en creditos. Guardemos tu primera direccion');
         setPendingAddressSetup({
           firebaseUid: createdUser.uid,
           full_name: form.fullName,
@@ -80,7 +82,7 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
       }
     } catch (error) {
       console.error('Firebase auth error:', error);
-      toast.error(firebaseError(error.code));
+      toast.error(firebaseError(error?.code, error?.message));
     } finally {
       setLoading(false);
     }
@@ -130,6 +132,22 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {mode === 'register' && (
               <>
+                <div
+                  style={{
+                    background: '#FFF7ED',
+                    border: '1px solid #FED7AA',
+                    color: '#9A3412',
+                    borderRadius: 12,
+                    padding: '0.875rem',
+                    fontSize: 13,
+                    lineHeight: 1.6,
+                  }}
+                >
+                  <strong style={{ display: 'block', marginBottom: 4 }}>Te llevas Gs. 10.000 al registrarte</strong>
+                  Usa tus creditos desde Gs. 40.000 y gana otros Gs. 10.000 por cada amigo que compre con tu codigo.
+                  Maximo 3 amigos premiados.
+                </div>
+
                 <div className="field">
                   <label>Nombre completo</label>
                   <input
@@ -153,6 +171,19 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
                     inputMode="tel"
                   />
                   {errors.phone && <span className="error-msg">{errors.phone}</span>}
+                </div>
+
+                <div className="field">
+                  <label>Codigo de referido (opcional)</label>
+                  <input
+                    className="input"
+                    placeholder="Ej: LUNAX123"
+                    value={form.referralCode}
+                    onChange={(event) => setField('referralCode', event.target.value.toUpperCase())}
+                    autoCapitalize="characters"
+                    maxLength={12}
+                  />
+                  <small>Si un amigo te invito, cargalo ahora para dejar el vinculo fijo.</small>
                 </div>
               </>
             )}
@@ -274,7 +305,7 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
   );
 }
 
-function firebaseError(code) {
+function firebaseError(code, fallbackMessage = '') {
   const map = {
     'auth/user-not-found': 'No existe una cuenta con ese email',
     'auth/wrong-password': 'Contrasena incorrecta',
@@ -288,5 +319,7 @@ function firebaseError(code) {
     'auth/network-request-failed': 'Sin conexion a internet',
   };
 
-  return map[code] || `Ocurrio un error. Intenta de nuevo. ${code || ''}`.trim();
+  if (map[code]) return map[code];
+  if (fallbackMessage) return fallbackMessage;
+  return `Ocurrio un error. Intenta de nuevo. ${code || ''}`.trim();
 }

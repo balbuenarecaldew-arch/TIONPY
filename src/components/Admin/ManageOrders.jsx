@@ -4,6 +4,8 @@ import toast from 'react-hot-toast';
 import { supabase } from '../../lib/supabase';
 import { DEFAULT_PAYMENT_SETTINGS, fetchPaymentSettings } from '../../lib/storeSettings';
 import { shareOrderPaymentRequest } from '../../lib/orderShare';
+import { COMMITTED_ORDER_STATUSES } from '../../config/promotions';
+import { formatGs, reconcileOrderPromotions } from '../../lib/promotions';
 
 const STATUS_OPTIONS = [
   { value: 'pendiente', label: 'Pendiente' },
@@ -21,7 +23,7 @@ const ORDER_FILTERS = [
   { value: 'todos', label: 'Todos' },
 ];
 
-const STOCK_COMMITTED_STATUSES = new Set(['confirmado', 'preparando', 'en_camino', 'entregado']);
+const STOCK_COMMITTED_STATUSES = COMMITTED_ORDER_STATUSES;
 
 function normalizeWhatsappPhone(value) {
   const digits = String(value || '').replace(/\D/g, '');
@@ -75,11 +77,39 @@ export default function ManageOrders() {
 
       setOrders(ordersResult.data || []);
       setPaymentSettings(payment);
+      void syncPromotionState(ordersResult.data || [], { silent: true });
     } catch (error) {
       console.error(error);
       toast.error('No se pudieron cargar los pedidos');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function syncPromotionState(orderList, options = {}) {
+    const { silent = false } = options;
+    const candidates = (orderList || [])
+      .filter((order) => STOCK_COMMITTED_STATUSES.has(order.status) || order.status === 'cancelado')
+      .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime());
+
+    let rewarded = 0;
+    let refunded = 0;
+
+    for (const order of candidates) {
+      try {
+        const result = await reconcileOrderPromotions(order);
+        if (result.rewarded) rewarded += 1;
+        if (result.refunded) refunded += 1;
+      } catch (error) {
+        console.error(`No se pudo sincronizar promociones para ${order.order_number}`, error);
+      }
+    }
+
+    if (!silent && (rewarded || refunded)) {
+      const messages = [];
+      if (rewarded) messages.push(`${rewarded} premio${rewarded !== 1 ? 's' : ''} por referido acreditado${rewarded !== 1 ? 's' : ''}`);
+      if (refunded) messages.push(`${refunded} reintegro${refunded !== 1 ? 's' : ''} de credito procesado${refunded !== 1 ? 's' : ''}`);
+      toast.success(messages.join(' - '));
     }
   }
 
@@ -250,6 +280,14 @@ export default function ManageOrders() {
           : prev
       );
 
+      const nextOrder = {
+        ...currentOrder,
+        status: newStatus,
+        admin_notes: adminNote,
+      };
+
+      await syncPromotionState([nextOrder]);
+
       toast.success(`Estado actualizado a ${STATUS_OPTIONS.find((item) => item.value === newStatus)?.label}`);
     } catch (error) {
       if (undoStockSync) {
@@ -388,6 +426,7 @@ export default function ManageOrders() {
             const deliveryCode = order.address_snapshot?.delivery_code;
             const canDelete = order.status === 'entregado' || order.status === 'cancelado';
             const isSharing = sharingOrderId === order.id;
+            const creditApplied = Number(order.address_snapshot?.pricing?.credit_applied || 0);
 
             return (
               <div key={order.id} className="card">
@@ -400,6 +439,9 @@ export default function ManageOrders() {
                       </span>
                       {deliveryCode && (
                         <span className="badge badge-success">Codigo {deliveryCode}</span>
+                      )}
+                      {creditApplied > 0 && (
+                        <span className="badge">Credito {formatGs(creditApplied)}</span>
                       )}
                     </div>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>{order.customer_name}</div>
@@ -567,6 +609,19 @@ export default function ManageOrders() {
                   ))}
                 </div>
               </div>
+
+              {(selected.address_snapshot?.pricing?.credit_applied || 0) > 0 && (
+                <div className="field">
+                  <label>Promocion aplicada</label>
+                  <div className="card" style={{ background: 'var(--bg)', padding: '0.875rem', lineHeight: 1.8 }}>
+                    <div>Creditos usados: <strong>{formatGs(selected.address_snapshot.pricing.credit_applied || 0)}</strong></div>
+                    <div>Total antes del credito: <strong>{formatGs(selected.address_snapshot.pricing.total_before_credits || selected.total)}</strong></div>
+                    {selected.address_snapshot?.pricing?.credit_refund_processed && (
+                      <div style={{ color: 'var(--success)' }}>Credito reintegrado al cliente por cancelacion.</div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {(selected.address_snapshot?.pricing?.delivery_adjusted_distance_km !== null && selected.address_snapshot?.pricing?.delivery_adjusted_distance_km !== undefined) && (
                 <div className="field">

@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Clock, MapPin, Search, ShieldCheck, Sparkles, Truck } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import ProductCard from './ProductCard';
 import { storeConfig } from '../../config/store';
+import { PROMO_CONFIG } from '../../config/promotions';
 import {
   CATEGORY_SEED,
   getCategoryLabel,
@@ -13,6 +15,7 @@ import {
   isQuickBuyProduct,
   sortCategoriesForStore,
 } from '../../config/catalog';
+import { formatGs, getProfileCreditBalance } from '../../lib/promotions';
 
 const HOME_METRICS = [
   { icon: Clock, label: 'Entrega estimada', value: storeConfig.service.eta },
@@ -34,6 +37,7 @@ function getDefaultRanking(product) {
 }
 
 export default function ShopPage() {
+  const { profile } = useAuth();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -115,6 +119,7 @@ export default function ShopPage() {
     [categories, products]
   );
   const showShelves = !loading && !catalogNeedsMigration && !search.trim() && !activeCat;
+  const userCreditBalance = getProfileCreditBalance(profile);
 
   return (
     <div className="container page-pad">
@@ -163,6 +168,45 @@ export default function ShopPage() {
           </div>
         </div>
       </section>
+
+      <div
+        className="card"
+        style={{
+          marginTop: '1rem',
+          marginBottom: '1rem',
+          background: 'linear-gradient(135deg, #172554 0%, #1E293B 100%)',
+          color: '#fff',
+          borderColor: '#1E3A8A',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ maxWidth: 620 }}>
+            <div className="highlight-chip" style={{ marginBottom: 10, display: 'inline-flex', background: 'rgba(255,255,255,0.12)', color: '#DBEAFE' }}>
+              <Sparkles size={14} />
+              Creditos y referidos activos
+            </div>
+            <h2 style={{ fontSize: 22, marginBottom: 8 }}>
+              {profile ? `Tu saldo actual: ${formatGs(userCreditBalance)}` : `Gana ${formatGs(PROMO_CONFIG.welcomeBonusAmount)} al registrarte`}
+            </h2>
+            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, opacity: 0.9 }}>
+              {profile
+                ? `Usa hasta ${formatGs(PROMO_CONFIG.maxCreditPerOrder)} por pedido desde ${formatGs(PROMO_CONFIG.minimumOrderSubtotalForCredits)} en productos e invita amigos para sumar mas saldo.`
+                : `Invita amigos y gana ${formatGs(PROMO_CONFIG.referralRewardAmount)} por cada uno cuando haga una compra valida. Maximo ${PROMO_CONFIG.maxRewardedReferrals} amigos premiados.`}
+            </p>
+          </div>
+          <div style={{ minWidth: 220 }}>
+            <div style={{ fontSize: 12, opacity: 0.72, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 }}>
+              Compra rapida con beneficios
+            </div>
+            <strong style={{ fontSize: 30, fontFamily: "'Space Grotesk', sans-serif" }}>
+              {formatGs(PROMO_CONFIG.referralRewardAmount * PROMO_CONFIG.maxRewardedReferrals)}
+            </strong>
+            <div style={{ fontSize: 13, opacity: 0.82, marginTop: 4 }}>
+              tope de premios por referidos
+            </div>
+          </div>
+        </div>
+      </div>
 
       {catalogNeedsMigration && (
         <div className="card" style={{ marginBottom: '1rem', borderColor: '#FCD34D', background: '#FFF7ED' }}>

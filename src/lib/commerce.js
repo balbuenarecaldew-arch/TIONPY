@@ -1,3 +1,5 @@
+import { getCreditCheckoutState } from './promotions';
+
 export function getMemberDiscountRate(storeConfig) {
   return storeConfig?.discounts?.memberPercent || 0;
 }
@@ -21,15 +23,24 @@ export function buildCheckoutSummary(items, isRegistered, storeConfig, options =
   const shipping = typeof options.shippingOverride === 'number'
     ? options.shippingOverride
     : getShippingCost(subtotalAfterDiscount, storeConfig);
-  const total = subtotalAfterDiscount + shipping;
+  const totalBeforeCredits = subtotalAfterDiscount + shipping;
+  const credit = getCreditCheckoutState({
+    subtotalAfterDiscount,
+    totalBeforeCredits,
+    availableCredit: options.availableCredit || 0,
+    useCredits: Boolean(options.useCredits),
+  });
+  const total = Math.max(totalBeforeCredits - credit.applied, 0);
 
   return {
     subtotal,
     discount,
     subtotalAfterDiscount,
     shipping,
+    totalBeforeCredits,
     total,
     memberDiscountRate: getMemberDiscountRate(storeConfig),
+    credit,
   };
 }
 

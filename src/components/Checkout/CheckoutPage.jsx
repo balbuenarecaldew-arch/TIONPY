@@ -17,15 +17,22 @@ import { useCart } from '../../contexts/CartContext';
 import AuthModal from '../Auth/AuthModal';
 import AddressModal from '../Addresses/AddressModal';
 import { storeConfig } from '../../config/store';
+import { PROMO_CONFIG } from '../../config/promotions';
 import { buildCheckoutSummary, generateDeliveryCode } from '../../lib/commerce';
 import { calculateDeliveryQuote, formatFactorRange } from '../../lib/delivery';
 import { fetchUserAddresses, saveUserAddress } from '../../lib/addresses';
 import { fetchDeliverySettings } from '../../lib/storeSettings';
 import { getProductNotices } from '../../config/catalog';
+import {
+  buildCreditUsagePatch,
+  formatGs,
+  getProfileCreditBalance,
+  normalizePromotionProfile,
+} from '../../lib/promotions';
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const {
     checkoutItems,
     hasDirectCheckout,
@@ -42,6 +49,8 @@ export default function CheckoutPage() {
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState('register');
   const [deliverySettings, setDeliverySettings] = useState(null);
+  const [useCredits, setUseCredits] = useState(false);
+  const availableCredit = getProfileCreditBalance(profile);
 
   const pricingBase = useMemo(
     () => buildCheckoutSummary(checkoutItems, Boolean(user), storeConfig, { shippingOverride: 0 }),
@@ -59,8 +68,12 @@ export default function CheckoutPage() {
     [pricingBase.subtotalAfterDiscount, selectedAddr?.latitude, selectedAddr?.longitude, deliverySettings]
   );
   const summary = useMemo(
-    () => buildCheckoutSummary(checkoutItems, Boolean(user), storeConfig, { shippingOverride: deliveryQuote.shipping }),
-    [checkoutItems, user, deliveryQuote.shipping]
+    () => buildCheckoutSummary(checkoutItems, Boolean(user), storeConfig, {
+      shippingOverride: deliveryQuote.shipping,
+      availableCredit,
+      useCredits,
+    }),
+    [checkoutItems, user, deliveryQuote.shipping, availableCredit, useCredits]
   );
   const guestDiscountPreview = Math.round((pricingBase.subtotal * pricingBase.memberDiscountRate) / 100);
   const deliveryRuleLabel = deliveryQuote.factorRule ? formatFactorRange(deliveryQuote.factorRule) : '';
@@ -71,6 +84,18 @@ export default function CheckoutPage() {
     });
     return [...unique];
   }, [checkoutItems]);
+
+  useEffect(() => {
+    if (!user && useCredits) {
+      setUseCredits(false);
+    }
+  }, [user, useCredits]);
+
+  useEffect(() => {
+    if (!summary.credit.canUse && useCredits) {
+      setUseCredits(false);
+    }
+  }, [summary.credit.canUse, useCredits]);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,6 +188,7 @@ export default function CheckoutPage() {
     }
 
     setLoading(true);
+    let createdOrder = null;
 
     try {
       const productIds = checkoutItems.map((item) => item.id);
@@ -189,7 +215,15 @@ export default function CheckoutPage() {
       const orderPricing = {
         subtotal: summary.subtotal,
         discount: summary.discount,
+        subtotal_after_discount: summary.subtotalAfterDiscount,
         shipping: summary.shipping,
+        total_before_credits: summary.totalBeforeCredits,
+        credit_applied: summary.credit.applied,
+        credit_available_snapshot: summary.credit.availableCredit,
+        credit_max_per_order: PROMO_CONFIG.maxCreditPerOrder,
+        credit_minimum_order: PROMO_CONFIG.minimumOrderSubtotalForCredits,
+        credit_enabled: summary.credit.applied > 0,
+        credit_refund_processed: false,
         total: summary.total,
         member_discount_rate: summary.memberDiscountRate,
         delivery_mode: deliveryQuote.mode,
@@ -227,6 +261,7 @@ export default function CheckoutPage() {
         .single();
 
       if (orderError) throw orderError;
+      createdOrder = order;
 
       const orderItems = checkoutItems.map((item) => ({
         order_id: order.id,
@@ -253,15 +288,69 @@ export default function CheckoutPage() {
         note: `Pedido recibido. Codigo de entrega: ${deliveryCode}`,
       });
 
+      if (summary.credit.applied > 0) {
+        const { data: latestProfileData, error: latestProfileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('firebase_uid', user.uid)
+          .single();
+
+        if (latestProfileError) throw latestProfileError;
+
+        const latestProfile = normalizePromotionProfile(latestProfileData);
+        const latestSummary = buildCheckoutSummary(checkoutItems, true, storeConfig, {
+          shippingOverride: deliveryQuote.shipping,
+          availableCredit: latestProfile.credit_balance,
+          useCredits: true,
+        });
+
+        if (latestSummary.credit.applied < summary.credit.applied) {
+          throw new Error('Tus creditos cambiaron. Revisa el pedido y vuelve a intentarlo.');
+        }
+
+        const creditPatch = buildCreditUsagePatch(latestProfile, {
+          amount: summary.credit.applied,
+          orderId: order.id,
+        });
+
+        const { error: creditError } = await supabase
+          .from('profiles')
+          .update(creditPatch)
+          .eq('id', latestProfile.id);
+
+        if (creditError) throw creditError;
+      }
+
+      createdOrder = null;
+      try {
+        await refreshProfile();
+      } catch (refreshError) {
+        console.error('No se pudo refrescar el perfil luego del pedido', refreshError);
+      }
+
       if (hasDirectCheckout) {
         clearDirectCheckout();
       } else {
         clearCart();
       }
 
-      toast.success(`Pedido confirmado. Tu codigo de entrega es ${deliveryCode}`);
+      toast.success(
+        summary.credit.applied > 0
+          ? `Pedido confirmado. Codigo ${deliveryCode}. Usaste ${formatGs(summary.credit.applied)} en creditos.`
+          : `Pedido confirmado. Tu codigo de entrega es ${deliveryCode}`
+      );
       navigate(`/mis-pedidos/${order.id}`);
     } catch (error) {
+      if (createdOrder?.id) {
+        try {
+          // Si falla el debito del credito o cualquier paso posterior, removemos el pedido
+          // para no dejar una orden con total promocional sin saldo realmente descontado.
+          await supabase.from('orders').delete().eq('id', createdOrder.id);
+        } catch (rollbackError) {
+          console.error('No se pudo revertir el pedido tras un fallo promocional', rollbackError);
+        }
+      }
+
       console.error(error);
       toast.error(error?.message || 'No se pudo procesar el pedido');
     } finally {
@@ -345,7 +434,7 @@ export default function CheckoutPage() {
             <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: '1rem' }}>
               <h2 style={{ fontSize: 18 }}>Ingresa para continuar</h2>
               <p style={{ fontSize: 14, color: 'var(--txt-muted)' }}>
-                Guarda tus datos una vez y tus proximos pedidos saldran mucho mas rapido desde el celular.
+                Guarda tus datos una vez, recibe Gs. 10.000 en creditos y deja listos tus proximos pedidos desde el celular.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <button onClick={openRegister} className="btn btn-primary btn-full btn-lg">
@@ -457,7 +546,7 @@ export default function CheckoutPage() {
         </div>
 
         <aside className="checkout-sidebar">
-          <div className="card checkout-summary-card">
+            <div className="card checkout-summary-card">
             <h3 style={{ fontSize: 18, marginBottom: '1rem' }}>Tu pedido</h3>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -472,6 +561,40 @@ export default function CheckoutPage() {
             </div>
 
             <div className="divider" />
+
+            {user && (
+              <div
+                style={{
+                  background: '#FFF7ED',
+                  border: '1px solid #FED7AA',
+                  borderRadius: 14,
+                  padding: '0.9rem',
+                  marginBottom: '1rem',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#9A3412', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      Creditos disponibles
+                    </div>
+                    <strong style={{ fontSize: 20, color: '#7C2D12' }}>{formatGs(summary.credit.availableCredit)}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    className={useCredits && summary.credit.applied > 0 ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'}
+                    onClick={() => setUseCredits((current) => !current)}
+                    disabled={!summary.credit.canUse}
+                  >
+                    {useCredits && summary.credit.applied > 0 ? 'Quitar' : 'Usar'}
+                  </button>
+                </div>
+                <p style={{ margin: '0.75rem 0 0', fontSize: 13, color: '#9A3412', lineHeight: 1.6 }}>
+                  {summary.credit.canUse
+                    ? `Se descuenta hasta ${formatGs(summary.credit.maxApplicable)} y siempre queda un pago real pendiente.`
+                    : summary.credit.reason}
+                </p>
+              </div>
+            )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14 }}>
               <SummaryRow label="Subtotal" value={`Gs. ${summary.subtotal.toLocaleString('es-PY')}`} />
@@ -489,6 +612,13 @@ export default function CheckoutPage() {
                 value={summary.shipping === 0 ? 'GRATIS' : `Gs. ${summary.shipping.toLocaleString('es-PY')}`}
                 highlight={summary.shipping === 0}
               />
+              {summary.credit.applied > 0 && (
+                <SummaryRow
+                  label="Creditos aplicados"
+                  value={`- ${formatGs(summary.credit.applied)}`}
+                  highlight
+                />
+              )}
             </div>
 
             <div className="divider" />
@@ -538,6 +668,11 @@ export default function CheckoutPage() {
             >
               Pago: <strong>{storeConfig.payments.primary}</strong> o <strong>{storeConfig.payments.secondary}</strong>
             </div>
+
+            <p style={{ marginTop: '0.75rem', fontSize: 12, color: 'var(--txt-muted)', lineHeight: 1.6 }}>
+              Usa creditos desde {formatGs(PROMO_CONFIG.minimumOrderSubtotalForCredits)} en productos.
+              Maximo por pedido: {formatGs(PROMO_CONFIG.maxCreditPerOrder)}.
+            </p>
 
             {user ? (
               <button

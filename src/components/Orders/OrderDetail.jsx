@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, Clock, MapPin, Package, ShieldCheck, Truck, XCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatGs } from '../../lib/promotions';
 
 const STEPS = [
   { key: 'pendiente', label: 'Pedido recibido', icon: Clock },
@@ -232,6 +233,9 @@ export default function OrderDetail() {
             {'discount' in pricing && (
               <SummaryRow label="Descuento total" value={`- Gs. ${(pricing.discount || 0).toLocaleString('es-PY')}`} highlight={(pricing.discount || 0) > 0} />
             )}
+            {(pricing.credit_applied || 0) > 0 && (
+              <SummaryRow label="Creditos aplicados" value={`- ${formatGs(pricing.credit_applied || 0)}`} highlight />
+            )}
             {pricing.delivery_adjusted_distance_km !== null && pricing.delivery_adjusted_distance_km !== undefined && (
               <SummaryRow label="Distancia" value={`${pricing.delivery_adjusted_distance_km.toLocaleString('es-PY')} km`} />
             )}
@@ -239,6 +243,15 @@ export default function OrderDetail() {
               <SummaryRow label="Envio" value={pricing.shipping === 0 ? 'GRATIS' : `Gs. ${(pricing.shipping || 0).toLocaleString('es-PY')}`} highlight={pricing.shipping === 0} />
             )}
           </div>
+
+          {pricing.credit_refund_processed && (
+            <>
+              <div className="divider" />
+              <div style={{ fontSize: 13, color: 'var(--success)', lineHeight: 1.6 }}>
+                El credito usado en este pedido fue reintegrado a tu cuenta.
+              </div>
+            </>
+          )}
 
           <div className="divider" />
 

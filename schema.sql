@@ -32,9 +32,33 @@ create table if not exists profiles (
   email text not null,
   full_name text not null default '',
   phone text not null default '',
+  phone_normalized text not null default '',
   is_admin boolean not null default false,
+  credit_balance bigint not null default 0,
+  referral_code text,
+  referred_by_code text not null default '',
+  referred_by_profile_id uuid references profiles(id) on delete set null,
+  credit_history jsonb not null default '[]'::jsonb,
+  welcome_bonus_granted boolean not null default false,
+  welcome_bonus_expires_at timestamptz,
+  first_valid_purchase_processed boolean not null default false,
+  referral_reward_granted boolean not null default false,
+  referral_reward_order_id uuid,
   created_at timestamptz not null default now()
 );
+
+alter table if exists profiles
+  add column if not exists phone_normalized text not null default '',
+  add column if not exists credit_balance bigint not null default 0,
+  add column if not exists referral_code text,
+  add column if not exists referred_by_code text not null default '',
+  add column if not exists referred_by_profile_id uuid references profiles(id) on delete set null,
+  add column if not exists credit_history jsonb not null default '[]'::jsonb,
+  add column if not exists welcome_bonus_granted boolean not null default false,
+  add column if not exists welcome_bonus_expires_at timestamptz,
+  add column if not exists first_valid_purchase_processed boolean not null default false,
+  add column if not exists referral_reward_granted boolean not null default false,
+  add column if not exists referral_reward_order_id uuid;
 
 create table if not exists addresses (
   id uuid primary key default gen_random_uuid(),
@@ -157,6 +181,8 @@ execute function log_order_status();
 
 create index if not exists idx_products_category_id on products(category_id);
 create index if not exists idx_profiles_firebase_uid on profiles(firebase_uid);
+create unique index if not exists idx_profiles_referral_code_unique on profiles(referral_code) where referral_code is not null;
+create unique index if not exists idx_profiles_phone_normalized_unique on profiles(phone_normalized) where phone_normalized <> '';
 create index if not exists idx_addresses_firebase_uid on addresses(firebase_uid);
 create index if not exists idx_orders_firebase_uid on orders(firebase_uid);
 create index if not exists idx_order_items_order_id on order_items(order_id);
