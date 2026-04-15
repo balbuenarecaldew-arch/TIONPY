@@ -27,7 +27,7 @@ export default function CartPage() {
       <div className="container page-pad">
         <div className="empty-state">
           <div className="icon">Pedido</div>
-          <h3>Tu pedido esta vacio</h3>
+          <h3>Tu carrito esta vacio</h3>
           <p>Agrega bebidas, hielo, snacks, farmacia basica o un combo para arrancar.</p>
           <Link to="/" className="btn btn-primary" style={{ marginTop: '0.75rem' }}>
             <ShoppingBag size={16} />
