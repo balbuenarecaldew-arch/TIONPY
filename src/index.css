@@ -250,6 +250,11 @@ select.input {
   to { transform: rotate(360deg); }
 }
 
+@keyframes blink-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.38; }
+}
+
 .spinner {
   width: 24px;
   height: 24px;
@@ -451,6 +456,19 @@ select.input {
   color: #FDE68A;
   font-size: 12px;
   font-weight: 700;
+}
+
+.blink-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.14);
+  color: #FDE68A;
+  font-size: 12px;
+  font-weight: 700;
+  animation: blink-soft 1.1s ease-in-out infinite;
 }
 
 .promo-pill {
@@ -1119,14 +1137,21 @@ select.input {
   }
 
   .hero-banner {
-    padding: 1.15rem;
+    padding: 0.95rem;
+    gap: 12px;
+    margin-bottom: 0.75rem;
   }
 
   .hero-note-grid,
-  .category-spotlight-grid,
   .notice-card-grid,
   .checkout-note-grid {
     grid-template-columns: 1fr;
+  }
+
+  .category-spotlight-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 0.75rem;
   }
 
   .shop-sort {
@@ -1135,7 +1160,72 @@ select.input {
 
   .product-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+    gap: 10px;
+  }
+
+  .product-card-media {
+    height: 136px !important;
+  }
+
+  .product-card-body {
+    padding: 10px !important;
+  }
+
+  .product-card-title {
+    font-size: 14px !important;
+    line-height: 1.35 !important;
+    margin-bottom: 4px !important;
+  }
+
+  .product-card-description {
+    font-size: 12px !important;
+    line-height: 1.45 !important;
+    margin-bottom: 8px !important;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+
+  .product-card .btn {
+    height: 36px;
+    font-size: 12px;
+  }
+
+  .home-promo-card {
+    padding: 0.95rem;
+    margin-top: 0.75rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .hero-metric-card,
+  .hero-note-card,
+  .notice-card {
+    padding: 10px 12px;
+    border-radius: 12px;
+  }
+
+  .category-spotlight-card {
+    padding: 10px;
+    border-radius: 14px;
+    gap: 6px;
+  }
+
+  .category-spotlight-card strong {
+    font-size: 13px;
+  }
+
+  .category-spotlight-card span:last-child {
+    font-size: 11px;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+
+  .category-row {
+    margin-bottom: 0.9rem;
   }
 
   .cart-shell,

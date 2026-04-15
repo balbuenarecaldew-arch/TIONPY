@@ -54,6 +54,7 @@ export default function ProductCard({ product }) {
 
   return (
     <div
+      className="product-card"
       style={{
         background: '#fff',
         border: '1px solid var(--border)',
@@ -76,6 +77,7 @@ export default function ProductCard({ product }) {
     >
       <Link to={`/producto/${product.id}`} style={{ display: 'block', textDecoration: 'none' }}>
         <div
+          className="product-card-media"
           style={{
             height: 158,
             display: 'flex',
@@ -144,7 +146,7 @@ export default function ProductCard({ product }) {
         </div>
       </Link>
 
-      <div style={{ padding: '12px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div className="product-card-body" style={{ padding: '12px', flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
           <span
             style={{
@@ -165,10 +167,10 @@ export default function ProductCard({ product }) {
         </div>
 
         <Link to={`/producto/${product.id}`} style={{ textDecoration: 'none', color: 'inherit', flex: 1 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.45, marginBottom: 6, color: 'var(--txt)' }}>
+          <div className="product-card-title" style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.45, marginBottom: 6, color: 'var(--txt)' }}>
             {product.name}
           </div>
-          <div style={{ fontSize: 13, color: 'var(--txt-muted)', lineHeight: 1.6, marginBottom: 10 }}>
+          <div className="product-card-description" style={{ fontSize: 13, color: 'var(--txt-muted)', lineHeight: 1.6, marginBottom: 10 }}>
             {product.description || 'Compra rapida para sumar a tu pedido nocturno.'}
           </div>
         </Link>

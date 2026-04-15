@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock, MapPin, Search, ShieldCheck, Sparkles, Truck } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -38,6 +38,8 @@ function getDefaultRanking(product) {
 
 export default function ShopPage() {
   const { profile } = useAuth();
+  const catalogSectionRef = useRef(null);
+  const scrollTimeoutRef = useRef(null);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -72,6 +74,12 @@ export default function ShopPage() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => () => {
+    if (scrollTimeoutRef.current) {
+      window.clearTimeout(scrollTimeoutRef.current);
+    }
   }, []);
 
   const visibleCategories = useMemo(
@@ -120,6 +128,34 @@ export default function ShopPage() {
   );
   const showShelves = !loading && !catalogNeedsMigration && !search.trim() && !activeCat;
   const userCreditBalance = getProfileCreditBalance(profile);
+  const creditBlinkMessage = profile
+    ? `Gana ${formatGs(PROMO_CONFIG.referralRewardAmount)} por cada amigo que realice compras`
+    : `Gana ${formatGs(PROMO_CONFIG.welcomeBonusAmount)} al registrarte`;
+
+  function scrollToCatalog() {
+    if (typeof window === 'undefined') return;
+
+    if (scrollTimeoutRef.current) {
+      window.clearTimeout(scrollTimeoutRef.current);
+    }
+
+    scrollTimeoutRef.current = window.setTimeout(() => {
+      catalogSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 80);
+  }
+
+  function handleSpotlightCategoryClick(categoryId) {
+    setActiveCat((current) => (current === categoryId ? null : categoryId));
+    scrollToCatalog();
+  }
+
+  function handleCatalogCategoryClick(categoryId = null) {
+    setActiveCat(categoryId);
+    scrollToCatalog();
+  }
 
   return (
     <div className="container page-pad">
@@ -170,7 +206,7 @@ export default function ShopPage() {
       </section>
 
       <div
-        className="card"
+        className="card home-promo-card"
         style={{
           marginTop: '1rem',
           marginBottom: '1rem',
@@ -181,6 +217,9 @@ export default function ShopPage() {
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ maxWidth: 620 }}>
+            <div className="blink-copy" style={{ marginBottom: 10 }}>
+              {creditBlinkMessage}
+            </div>
             <div className="highlight-chip" style={{ marginBottom: 10, display: 'inline-flex', background: 'rgba(255,255,255,0.12)', color: '#DBEAFE' }}>
               <Sparkles size={14} />
               Creditos y referidos activos
@@ -234,7 +273,7 @@ export default function ShopPage() {
             <button
               key={category.slug || category.name}
               type="button"
-              onClick={() => setActiveCat(isActive ? null : category.id)}
+              onClick={() => handleSpotlightCategoryClick(category.id)}
               className={`category-spotlight-card ${isActive ? 'active' : ''}`}
               style={{
                 borderColor: isActive ? meta?.accent || 'var(--brand)' : 'var(--border)',
@@ -254,38 +293,27 @@ export default function ShopPage() {
         })}
       </section>
 
-      {showShelves && (
-        <>
-          <Shelf
-            title="Combos listos para la previa"
-            description="Packs comprables como cualquier producto para salir rapido del paso."
-            items={shelves.combos}
-          />
-          <Shelf
-            title="Compra rapida"
-            description="Lo que mas se pide de noche para resolver en pocos toques."
-            items={shelves.quick}
-          />
-          <Shelf
-            title="Farmacia basica"
-            description="Productos OTC para urgencias nocturnas sin complicar el flujo."
-            items={shelves.pharmacy}
-          />
-          <Shelf
-            title="Lo mas pedido esta noche"
-            description="Bebidas, snacks y destacados con mas salida en el catalogo."
-            items={shelves.popular}
-          />
-        </>
-      )}
-
-      <section className="notice-card-grid">
-        {NOTICE_CARDS.map((item) => (
-          <div key={item.title} className="notice-card">
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>{item.title}</div>
-            <p>{item.body}</p>
+      <section
+        ref={catalogSectionRef}
+        style={{ scrollMarginTop: 92, marginBottom: '0.75rem' }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ fontSize: 20, marginBottom: 4 }}>Catalogo</h2>
+            <p style={{ fontSize: 13, color: 'var(--txt-muted)', margin: 0 }}>
+              Filtra rapido y pide en pocos toques.
+            </p>
           </div>
-        ))}
+          {activeCat && (
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => handleCatalogCategoryClick(null)}
+            >
+              Ver todo
+            </button>
+          )}
+        </div>
       </section>
 
       <div className="card" style={{ marginBottom: '1rem' }}>
@@ -320,14 +348,14 @@ export default function ShopPage() {
       </div>
 
       <div className="category-row">
-        <CatPill active={!activeCat} onClick={() => setActiveCat(null)}>
+        <CatPill active={!activeCat} onClick={() => handleCatalogCategoryClick(null)}>
           Todo el catalogo
         </CatPill>
         {visibleCategories.map((category) => (
           <CatPill
             key={category.id || category.slug || category.name}
             active={activeCat === category.id}
-            onClick={() => setActiveCat(category.id || null)}
+            onClick={() => handleCatalogCategoryClick(category.id || null)}
           >
             {getCategoryLabel(category)}
           </CatPill>
@@ -354,6 +382,40 @@ export default function ShopPage() {
           </div>
         </>
       )}
+
+      {showShelves && (
+        <>
+          <Shelf
+            title="Combos listos para la previa"
+            description="Packs comprables como cualquier producto para salir rapido del paso."
+            items={shelves.combos}
+          />
+          <Shelf
+            title="Compra rapida"
+            description="Lo que mas se pide de noche para resolver en pocos toques."
+            items={shelves.quick}
+          />
+          <Shelf
+            title="Farmacia basica"
+            description="Productos OTC para urgencias nocturnas sin complicar el flujo."
+            items={shelves.pharmacy}
+          />
+          <Shelf
+            title="Lo mas pedido esta noche"
+            description="Bebidas, snacks y destacados con mas salida en el catalogo."
+            items={shelves.popular}
+          />
+        </>
+      )}
+
+      <section className="notice-card-grid">
+        {NOTICE_CARDS.map((item) => (
+          <div key={item.title} className="notice-card">
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>{item.title}</div>
+            <p>{item.body}</p>
+          </div>
+        ))}
+      </section>
     </div>
   );
 }
